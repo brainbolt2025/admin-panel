@@ -4,10 +4,11 @@ import { Grid3X3, Shield, Building, FileText, X } from 'lucide-react';
 interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
+  activeItem: string;
+  onActiveItemChange: (item: string) => void;
 }
 
-const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
-  const [activeItem, setActiveItem] = useState('Dashboard');
+const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarProps) => {
 
   const navigationItems = [
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
@@ -60,7 +61,7 @@ const Sidebar = ({ isOpen, onToggle }: SidebarProps) => {
                 return (
                   <li key={item.id}>
                     <div
-                      onClick={() => setActiveItem(item.id)}
+                      onClick={() => onActiveItemChange(item.id)}
                       className={`
                         w-full flex items-center space-x-3 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium
                         ${activeItem === item.id
