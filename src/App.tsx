@@ -5,6 +5,7 @@ import Topbar from './components/Topbar'
 import Dashboard from './components/Dashboard'
 import PropertyManagers from './components/PropertyManagers'
 import InvitePM from './components/InvitePM'
+import Subscription from './components/Subscription'
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -12,6 +13,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
+  const [showSubscription, setShowSubscription] = useState(false)
 
   // Check for existing tokens and refresh if needed
   useEffect(() => {
@@ -111,6 +113,11 @@ function App() {
     setShowInvitePM(false)
   }
 
+  const handleSubscriptionSuccess = () => {
+    setShowSubscription(false)
+    setIsLoggedIn(true)
+  }
+
   const handleLogin = () => {
     setIsLoggedIn(true)
   }
@@ -180,9 +187,14 @@ function App() {
     )
   }
 
+  // Show subscription page (no authentication required)
+  if (showSubscription) {
+    return <Subscription onSuccess={handleSubscriptionSuccess} />
+  }
+
   // Show login screen if not logged in
   if (!isLoggedIn) {
-    return <Login onLogin={handleLogin} />
+    return <Login onLogin={handleLogin} onShowSubscription={() => setShowSubscription(true)} />
   }
 
   return (

@@ -3,9 +3,10 @@ import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLogin: () => void;
+  onShowSubscription?: () => void;
 }
 
-const Login = ({ onLogin }: LoginProps) => {
+const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -175,9 +176,24 @@ const Login = ({ onLogin }: LoginProps) => {
 
           {/* Additional Info */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 mb-4">
               Test: mrjpjay2@gmail.com
             </p>
+            
+            {/* Subscription Link */}
+            {onShowSubscription && (
+              <div className="border-t pt-4">
+                <p className="text-sm text-gray-500 mb-3">
+                  New Property Manager?
+                </p>
+                <button
+                  onClick={onShowSubscription}
+                  className="text-teal-600 hover:text-teal-700 font-medium text-sm transition-colors"
+                >
+                  Create Account & Subscribe →
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
