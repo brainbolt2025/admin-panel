@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './components/Dashboard'
@@ -6,6 +7,7 @@ import PropertyManagers from './components/PropertyManagers'
 import InvitePM from './components/InvitePM'
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
@@ -22,6 +24,10 @@ function App() {
     setShowInvitePM(false)
   }
 
+  const handleLogin = () => {
+    setIsLoggedIn(true)
+  }
+
   const renderContent = () => {
     if (showInvitePM) {
       return <InvitePM onBack={handleBackFromInvitePM} />
@@ -35,6 +41,11 @@ function App() {
       default:
         return <Dashboard />
     }
+  }
+
+  // Show login screen if not logged in
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />
   }
 
   return (
