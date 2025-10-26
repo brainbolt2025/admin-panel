@@ -86,18 +86,53 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      assignedProperties: []
-    });
-    
-    setIsSubmitting(false);
-    // In a real app, you'd show a success message here
+    try {
+      const accessToken = localStorage.getItem('access_token');
+      
+      if (!accessToken) {
+        alert('You are not authenticated. Please log in again.');
+        return;
+      }
+
+      const response = await fetch(
+        'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/invite-pm',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            name: formData.name,
+            role: 'pm'
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        console.log('User invited successfully:', data);
+        alert('Invitation sent successfully!');
+        
+        // Reset form
+        setFormData({
+          name: '',
+          email: '',
+          assignedProperties: []
+        });
+      } else {
+        console.error('Failed to invite user:', data);
+        alert(data.error || 'Failed to send invitation. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error inviting user:', error);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
