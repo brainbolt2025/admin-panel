@@ -3,16 +3,30 @@ import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './components/Dashboard'
 import PropertyManagers from './components/PropertyManagers'
+import InvitePM from './components/InvitePM'
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeItem, setActiveItem] = useState('Dashboard')
+  const [showInvitePM, setShowInvitePM] = useState(false)
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
   }
 
+  const handleNewPMAccount = () => {
+    setShowInvitePM(true)
+  }
+
+  const handleBackFromInvitePM = () => {
+    setShowInvitePM(false)
+  }
+
   const renderContent = () => {
+    if (showInvitePM) {
+      return <InvitePM onBack={handleBackFromInvitePM} />
+    }
+
     switch (activeItem) {
       case 'Dashboard':
         return <Dashboard />
@@ -33,7 +47,7 @@ function App() {
       />
       
       <div className="flex-1 flex flex-col">
-        <Topbar onMenuToggle={toggleSidebar} />
+        <Topbar onMenuToggle={toggleSidebar} onNewPMAccount={handleNewPMAccount} />
         <main className="flex-1">
           {renderContent()}
         </main>

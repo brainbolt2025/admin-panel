@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Search, ChevronDown, ArrowUp, Check, Clock, Minus, Eye, Key, RotateCcw, Edit, Trash2, UserPlus } from 'lucide-react';
+import { Search, ChevronDown, ArrowUp, Check, Clock, Minus } from 'lucide-react';
+import InvitePM from './InvitePM';
 
 interface PropertyManager {
   id: string;
@@ -15,6 +16,11 @@ const PropertyManagers = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [regionFilter, setRegionFilter] = useState('Any');
+  const [showInvitePM, setShowInvitePM] = useState(false);
+
+  const handleBulkInviteClick = () => {
+    setShowInvitePM(true);
+  };
 
   // Mock data based on the image
   const propertyManagers: PropertyManager[] = [
@@ -82,6 +88,11 @@ const PropertyManagers = () => {
     return matchesSearch && matchesStatus && matchesRegion;
   });
 
+  // Show InvitePM component if showInvitePM is true
+  if (showInvitePM) {
+    return <InvitePM onBack={() => setShowInvitePM(false)} />;
+  }
+
   return (
     <div className="p-6">
       {/* Header Section */}
@@ -132,7 +143,10 @@ const PropertyManagers = () => {
           </div>
 
           {/* Bulk Invite Button */}
-          <button className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+          <button 
+            disabled
+            className="bg-gray-400 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors cursor-not-allowed"
+          >
             <ArrowUp className="w-4 h-4" />
             Bulk Invite
           </button>

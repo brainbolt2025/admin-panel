@@ -2,9 +2,10 @@ import { Search, Bell, UserPlus, Menu } from 'lucide-react';
 
 interface TopbarProps {
   onMenuToggle: () => void;
+  onNewPMAccount: () => void;
 }
 
-const Topbar = ({ onMenuToggle }: TopbarProps) => {
+const Topbar = ({ onMenuToggle, onNewPMAccount }: TopbarProps) => {
   return (
     <header className="flex items-center justify-between bg-white px-6 py-4 border-b border-gray-200">
       {/* Left side - Mobile menu button and search */}
@@ -40,10 +41,13 @@ const Topbar = ({ onMenuToggle }: TopbarProps) => {
         </div>
 
         {/* New PM Account Button */}
-        <div className="bg-teal-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-teal-700 transition-colors">
+        <button 
+          onClick={onNewPMAccount}
+          className="bg-teal-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-teal-700 transition-colors"
+        >
           <UserPlus className="w-4 h-4" />
           <span className="font-medium">New PM Account</span>
-        </div>
+        </button>
       </div>
     </header>
   );
