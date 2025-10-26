@@ -1,11 +1,12 @@
-import { Search, Bell, UserPlus, Menu } from 'lucide-react';
+import { Search, Bell, UserPlus, Menu, LogOut } from 'lucide-react';
 
 interface TopbarProps {
   onMenuToggle: () => void;
   onNewPMAccount: () => void;
+  onLogout: () => void;
 }
 
-const Topbar = ({ onMenuToggle, onNewPMAccount }: TopbarProps) => {
+const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout }: TopbarProps) => {
   return (
     <header className="flex items-center justify-between bg-white px-6 py-4 border-b border-gray-200">
       {/* Left side - Mobile menu button and search */}
@@ -47,6 +48,15 @@ const Topbar = ({ onMenuToggle, onNewPMAccount }: TopbarProps) => {
         >
           <UserPlus className="w-4 h-4" />
           <span className="font-medium">New PM Account</span>
+        </button>
+
+        {/* Logout Button */}
+        <button 
+          onClick={onLogout}
+          className="bg-gray-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-gray-700 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="font-medium">Logout</span>
         </button>
       </div>
     </header>

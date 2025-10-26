@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Lock, LogIn } from 'lucide-react';
+import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLogin: () => void;
@@ -11,6 +11,8 @@ const Login = ({ onLogin }: LoginProps) => {
     password: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -18,26 +20,55 @@ const Login = ({ onLogin }: LoginProps) => {
       ...prev,
       [name]: value
     }));
+    // Clear error message when user starts typing
+    if (errorMessage) {
+      setErrorMessage('');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Log credentials to console (placeholder logic)
-    console.log('Login attempt:', {
-      email: formData.email,
-      password: formData.password
-    });
+    try {
+      const response = await fetch(
+        'https://qmhmgjzkpfzxfjdurigu.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password
+          })
+        }
+      );
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // For now, just call onLogin to proceed to dashboard
-    // Later this will be replaced with actual Supabase Auth
-    onLogin();
-    
-    setIsSubmitting(false);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Login successful:', data);
+        
+        // Store tokens in localStorage for future use
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        // Navigate to dashboard on success
+        onLogin();
+      } else {
+        const error = await response.json();
+        console.error('Login failed:', error);
+        setErrorMessage('Password is wrong');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setErrorMessage('An error occurred during login. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -80,17 +111,36 @@ const Login = ({ onLogin }: LoginProps) => {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   id="password"
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
+                  className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
                   placeholder="Enter your password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
               </div>
             </div>
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="text-red-600 text-sm text-center">
+                {errorMessage}
+              </div>
+            )}
 
             {/* Forgot Password Link */}
             <div className="text-left">
@@ -126,7 +176,7 @@ const Login = ({ onLogin }: LoginProps) => {
           {/* Additional Info */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">
-              Demo credentials: Use any email and password
+              Test: mrjpjay2@gmail.com
             </p>
           </div>
         </div>
