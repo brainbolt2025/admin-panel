@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, Check, CreditCard, ArrowRight } from 'lucide-react';
+import { config } from '../config';
 
 interface SubscriptionProps {
   onSuccess?: () => void;
@@ -77,22 +78,63 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
-      // Simulate Stripe checkout process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Here you would integrate with Stripe
-      // For now, we'll simulate success
-      setStep('success');
-      
-      if (onSuccess) {
-        setTimeout(() => {
-          onSuccess();
-        }, 3000);
+      // Step 1: Create Stripe customer
+      const customerResponse = await fetch(config.api.createStripeCustomer, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          name: formData.name,
+          property_name: formData.propertyName
+        })
+      });
+
+      if (!customerResponse.ok) {
+        const errorData = await customerResponse.json();
+        throw new Error(errorData.error || 'Failed to create customer');
       }
+
+      const customerData = await customerResponse.json();
+      const stripeCustomerId = customerData.customer_id;
+
+      // Step 2: Create subscription checkout session
+      const subscriptionResponse = await fetch(config.api.createSubscription, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          user_id: 'temp-user-id', // This will be replaced with actual user ID after account creation
+          email: formData.email,
+          stripe_customer_id: stripeCustomerId,
+          plan: selectedPlan as 'monthly' | 'yearly'
+        })
+      });
+
+      if (!subscriptionResponse.ok) {
+        const errorData = await subscriptionResponse.json();
+        throw new Error(errorData.error || 'Failed to create subscription');
+      }
+
+      const subscriptionData = await subscriptionResponse.json();
+      
+      // Redirect to Stripe Checkout
+      if (subscriptionData.success && subscriptionData.url) {
+        window.location.href = subscriptionData.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+
     } catch (error) {
-      setErrorMessage('Payment processing failed. Please try again.');
+      console.error('Subscription error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Payment processing failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

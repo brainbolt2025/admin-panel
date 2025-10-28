@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
+import { config } from '../config';
 
 interface LoginProps {
   onLogin: () => void;
@@ -33,13 +34,13 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
 
     try {
       const response = await fetch(
-        'https://qmhmgjzkpfzxfjdurigu.supabase.co/auth/v1/token?grant_type=password',
+        `${config.supabase.url}/auth/v1/token?grant_type=password`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y',
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+            'apikey': config.supabase.anonKey,
+            'Authorization': `Bearer ${config.supabase.anonKey}`
           },
           body: JSON.stringify({
             email: formData.email,

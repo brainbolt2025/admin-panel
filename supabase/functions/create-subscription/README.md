@@ -23,7 +23,7 @@ The function uses the same `STRIPE_SECRET_KEY` secret from your previous functio
 3. Go to **Project Settings** → **Edge Functions** → **Secrets**
 4. Click **Add Secret**
 5. Key: `STRIPE_SECRET_KEY`
-6. Value: `sk_test_xxx` (your Stripe test key)
+6. Value: `sk_test_xxx` (see .env.local for actual key)
 7. Click **Save**
 
 ### 2. Create Price IDs in Stripe Dashboard
@@ -39,13 +39,17 @@ Before deploying, you need to create products and prices in Stripe:
 
 ### 3. Update Price IDs in the Function
 
-Replace the placeholder price IDs in the function with your actual Stripe price IDs:
+The function now uses the development price IDs. These are already configured in the code:
 
 ```typescript
 const priceId = plan === 'monthly' 
-  ? 'price_YOUR_MONTHLY_ID'     // Replace with your actual price ID
-  : 'price_YOUR_YEARLY_ID'      // Replace with your actual price ID
+  ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
+  : 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
 ```
+
+**Development Price IDs:**
+- Monthly: `price_1SMzASLC1RJAUbjMZVUqQCY0`
+- Yearly: `price_1SMzB3LC1RJAUbjMB57Ph1dI`
 
 ## Deployment
 

@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard'
 import PropertyManagers from './components/PropertyManagers'
 import InvitePM from './components/InvitePM'
 import Subscription from './components/Subscription'
+import { config } from './config'
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -128,12 +129,12 @@ function App() {
       
       if (accessToken) {
         const response = await fetch(
-          'https://qmhmgjzkpfzxfjdurigu.supabase.co/auth/v1/logout',
+          `${config.supabase.url}/auth/v1/logout`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y',
+              'apikey': config.supabase.anonKey,
               'Authorization': `Bearer ${accessToken}`
             }
           }

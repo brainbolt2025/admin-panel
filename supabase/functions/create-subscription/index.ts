@@ -74,11 +74,10 @@ serve(async (req) => {
     })
 
     // Define price IDs based on plan
-    // TODO: Replace these test price IDs with your production prices in Stripe Dashboard
-    // For production: Replace price_dev_... with price_live_...
+    // Development price IDs - replace with production prices when going live
     const priceId = plan === 'monthly' 
-      ? 'price_1SMce8LC1RJAUbjMf3MZyCav'   
-      : 'price_1SMcgxLC1RJAUbjMCsGkOzCK'    // Replace with production price ID
+      ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
+      : 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
 
     // Create a Stripe Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
