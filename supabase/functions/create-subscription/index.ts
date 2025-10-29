@@ -73,11 +73,22 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    // Define price IDs based on plan
-    // Development price IDs - replace with production prices when going live
+    // Detect if we're in test mode or live mode based on the secret key
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
+    const isTestMode = stripeSecretKey.startsWith('sk_test_')
+    
+    console.log('Stripe key detected:', stripeSecretKey.substring(0, 10) + '...')
+    console.log('Key starts with sk_test_:', stripeSecretKey.startsWith('sk_test_'))
+    console.log('Mode detected:', isTestMode ? 'TEST' : 'LIVE')
+
+    // Define price IDs based on plan and environment
     const priceId = plan === 'monthly' 
-      ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
-      : 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
+      ? (isTestMode 
+          ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
+          : 'price_1SMce8LC1RJAUbjMf3MZyCav')  // LIVE_MONTHLY_PRICE_ID
+      : (isTestMode 
+          ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
+          : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')  // LIVE_YEARLY_PRICE_ID
 
     // Create a Stripe Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
@@ -188,9 +199,10 @@ WORKFLOW:
 
 UPGRADING TO PRODUCTION:
 - Replace sk_test_... with sk_live_... in Supabase secrets
-- Replace price_dev_monthly_149 with your live monthly price ID
-- Replace price_dev_yearly_1429 with your live yearly price ID
+- Live monthly price ID: price_1SMce8LC1RJAUbjMf3MZyCav
+- Live yearly price ID: price_1SMcgxLC1RJAUbjMCsGkOzCK
 - Update success_url and cancel_url for production domain
+- The function will automatically detect test vs live mode based on your secret key
 
 TESTING:
 - Use test card: 4242 4242 4242 4242
