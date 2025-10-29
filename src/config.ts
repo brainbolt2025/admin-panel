@@ -26,6 +26,9 @@ export const config = {
   
   // API endpoints - Dynamic based on environment
   api: {
+    createUser: isDevelopment
+      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-user'
+      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-user',
     createStripeCustomer: isDevelopment
       ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-stripe-customer'
       : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-stripe-customer',

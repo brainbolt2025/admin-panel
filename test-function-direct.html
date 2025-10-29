@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test create-user Function</title>
+</head>
+<body>
+    <h1>Test create-user Function</h1>
+    <button onclick="testFunction()">Test Function</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testFunction() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-user', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvbGpieXZybmt0eHd0bmpvbWFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MTM0NzcsImV4cCI6MjA3NzE4OTQ3N30.qUU-teO-8RSitnM6GemwjcaezVDD6eJcNYUmxL8O5Bw'
+                    },
+                    body: JSON.stringify({
+                        email: 'test' + Date.now() + '@example.com',
+                        password: 'password123',
+                        name: 'Test User',
+                        property_name: 'Test Property'
+                    })
+                });
+                
+                const data = await response.json();
+                resultEl.textContent = `Status: ${response.status}\n\nResponse:\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultEl.textContent = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+

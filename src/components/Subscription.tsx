@@ -81,7 +81,31 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
     setErrorMessage('');
 
     try {
-      // Step 1: Create Stripe customer
+      // Step 1: Create user account and profile via Edge Function
+      const userResponse = await fetch(config.api.createUser, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          property_name: formData.propertyName
+        })
+      });
+
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        throw new Error(errorData.error || 'Failed to create user account');
+      }
+
+      const userData = await userResponse.json();
+      const userId = userData.user_id;
+      console.log('User created successfully:', userId);
+
+      // Step 2: Create Stripe customer
       const customerResponse = await fetch(config.api.createStripeCustomer, {
         method: 'POST',
         headers: {
@@ -103,7 +127,7 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
       const customerData = await customerResponse.json();
       const stripeCustomerId = customerData.customer_id;
 
-      // Step 2: Create subscription checkout session
+      // Step 3: Create subscription checkout session
       const subscriptionResponse = await fetch(config.api.createSubscription, {
         method: 'POST',
         headers: {
