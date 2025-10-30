@@ -45,6 +45,25 @@ function App() {
     checkAuth()
   }, [])
 
+  // Handle payment success redirect
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const sessionId = urlParams.get('session_id')
+    const paymentStatus = urlParams.get('payment')
+    
+    if (paymentStatus === 'success' && sessionId) {
+      console.log('Payment successful, session ID:', sessionId)
+      // Clear the URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname)
+      // The user should already be logged in if payment was successful
+      // The webhook should have updated their subscription status
+    } else if (paymentStatus === 'cancelled') {
+      console.log('Payment was cancelled')
+      // Clear the URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+  }, [])
+
   const checkTokenValidity = async (token: string): Promise<boolean> => {
     try {
       const response = await fetch(

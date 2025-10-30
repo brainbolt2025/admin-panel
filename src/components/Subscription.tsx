@@ -135,7 +135,7 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
           'Authorization': `Bearer ${config.supabase.anonKey}`
         },
         body: JSON.stringify({
-          user_id: 'temp-user-id', // This will be replaced with actual user ID after account creation
+          user_id: userId, // Use the actual user ID from account creation
           email: formData.email,
           stripe_customer_id: stripeCustomerId,
           plan: selectedPlan as 'monthly' | 'yearly'

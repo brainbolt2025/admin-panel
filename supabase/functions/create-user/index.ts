@@ -116,8 +116,39 @@ serve(async (req) => {
 
     const supabase = createClient(finalSupabaseUrl, finalSupabaseServiceKey)
 
-    // Step 1: Create user in Supabase Auth using regular signup
-    console.log('Step 1: Attempting to create auth user with email:', email)
+    // Step 1: Check if user already exists BEFORE creating auth user
+    console.log('Step 1: Checking if user already exists with email:', email)
+    
+    // Check users table for existing email
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email)
+      .maybeSingle()
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.warn('Error checking for existing user in users table:', checkError)
+    }
+
+    if (existingUser) {
+      console.error('User with this email already exists in users table:', existingUser.id)
+      return new Response(
+        JSON.stringify({ 
+          error: `User with email ${email} already exists. Please use a different email.` 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Also check auth.users table by trying to create the user first
+    // If it fails with "User already registered", we know the email exists
+    console.log('Step 1b: Checking auth.users table by attempting signup...')
+
+    // Step 2: Create user in Supabase Auth using regular signup
+    console.log('Step 2: Attempting to create auth user with email:', email)
     console.log('Setting auth metadata:', { name, property_name, role: 'pm' })
     
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -139,112 +170,29 @@ serve(async (req) => {
     }
 
     if (authError) {
-      console.error('❌ STEP 1 FAILED: Auth user creation error')
-      console.error('Auth error object:', authError)
-      console.error('Auth error type:', typeof authError)
-      console.error('Auth error constructor:', authError?.constructor?.name)
-      // Try to get all error information
-      const errorInfo: any = {}
-      try {
-        errorInfo.message = authError.message
-        errorInfo.status = authError.status
-        errorInfo.code = authError.code
-        errorInfo.name = authError.name
-        errorInfo.stack = authError.stack
-        
-        // Try to access all properties
-        for (const key in authError) {
-          try {
-            errorInfo[key] = authError[key]
-          } catch (e) {
-            errorInfo[key] = '[Unable to serialize]'
-          }
-        }
-        
-        // Try JSON stringify
-        try {
-          errorInfo.stringified = JSON.stringify(authError, null, 2)
-        } catch (e) {
-          errorInfo.stringified = '[Unable to stringify]'
-        }
-        
-        // Try with Object.getOwnPropertyNames
-        try {
-          errorInfo.allProperties = JSON.stringify(authError, Object.getOwnPropertyNames(authError), 2)
-        } catch (e) {
-          errorInfo.allProperties = '[Unable to stringify with all properties]'
-        }
-      } catch (e) {
-        errorInfo.stringifyError = String(e)
-      }
-      
-      console.error('=== FULL AUTH ERROR INFO ===')
-      console.error('Error info object:', JSON.stringify(errorInfo, null, 2))
+      console.error('❌ STEP 2 FAILED: Auth user creation error')
       console.error('Auth error message:', authError.message)
-      console.error('Auth error status:', authError.status)
       console.error('Auth error code:', authError.code)
-      console.error('Auth error name:', authError.name)
-      console.error('Auth error stack:', authError.stack)
       
-      // Log all properties of the error
-      console.error('=== ITERATING THROUGH ERROR PROPERTIES ===')
-      for (const key in authError) {
-        try {
-          console.error(`Auth error.${key}:`, String(authError[key]))
-        } catch (e) {
-          console.error(`Auth error.${key}:`, '[Error accessing property]')
-        }
-      }
-      
-      // Try to access common AuthApiError properties
-      if (authError instanceof Error) {
-        console.error('Is Error instance: true')
-        console.error('Error toString:', authError.toString())
-      }
-      
-      // Check for Supabase-specific error properties
-      const supabaseError = authError as any
-      if (supabaseError.response) {
-        console.error('Error response object:', supabaseError.response)
-        try {
-          console.error('Error response status:', supabaseError.response?.status)
-          console.error('Error response statusText:', supabaseError.response?.statusText)
-          console.error('Error response url:', supabaseError.response?.url)
-          // Note: Can't await here, but can check for text method
-          if (supabaseError.response?.text) {
-            supabaseError.response.text().then((responseText: string) => {
-              console.error('Error response body (text):', responseText)
-              try {
-                const responseJson = JSON.parse(responseText)
-                console.error('Error response body (parsed):', JSON.stringify(responseJson, null, 2))
-              } catch (e) {
-                console.error('Could not parse response as JSON')
-              }
-            }).catch((e: any) => {
-              console.error('Error reading response text:', e)
-            })
+      // Check if this is a "User already registered" error
+      const errorMsg = authError.message || ''
+      if (errorMsg.includes('User already registered') || 
+          errorMsg.includes('already registered') ||
+          authError.code === 'user_already_exists' ||
+          authError.code === 'email_address_invalid') {
+        console.error('User already exists in auth.users table')
+        return new Response(
+          JSON.stringify({ 
+            error: `User with email ${email} already exists. Please use a different email.` 
+          }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           }
-        } catch (e) {
-          console.error('Error accessing response properties:', e)
-        }
-      }
-      if (supabaseError.context) {
-        console.error('Error context:', supabaseError.context)
+        )
       }
       
-      // Try to get the actual error message from the response
-      if (supabaseError.message) {
-        console.error('Original error message:', supabaseError.message)
-      }
-      
-      // Log the entire error as a string
-      console.error('Error as string:', String(authError))
-      console.error('Error toString():', authError.toString())
-      
-      // Extract error message - handle different formats
-      const errorMsg = authError.message || 'Unknown error'
-      
-      // Provide detailed error message
+      // For other errors, provide detailed error message
       let errorMessage = `[AUTH STEP] Failed to create auth user: ${errorMsg}`
       if (authError.status) {
         errorMessage += ` (HTTP Status: ${authError.status})`
@@ -252,44 +200,16 @@ serve(async (req) => {
       if (authError.code) {
         errorMessage += ` (Error Code: ${authError.code})`
       }
-      if (authError.error_description) {
-        errorMessage += ` (Description: ${authError.error_description})`
-      }
-      if (authError.name) {
-        errorMessage += ` (Error Type: ${authError.name})`
-      }
-      
-      // If the message contains "Database error", it might be from a trigger
-      if (errorMsg.includes('Database error') || errorMsg.includes('database')) {
-        console.error('⚠️ WARNING: Error message suggests database issue during auth creation')
-        console.error('This might indicate a database trigger or function is failing when creating the auth user')
-        console.error('Check your database for triggers on auth.users table')
-      }
-      
-      // Extract all available error information for response
-      const authErrorResponse: any = {
-        message: authError.message,
-        status: authError.status,
-        code: authError.code,
-        name: authError.name,
-        error_description: authError.error_description
-      }
-      
-      // Try to get response body if available
-      if (supabaseError.response) {
-        try {
-          authErrorResponse.response_status = supabaseError.response?.status
-          authErrorResponse.response_statusText = supabaseError.response?.statusText
-        } catch (e) {
-          // Ignore
-        }
-      }
       
       return new Response(
         JSON.stringify({ 
           error: errorMessage,
           step: 'auth_creation',
-          auth_error: authErrorResponse
+          auth_error: {
+            message: authError.message,
+            status: authError.status,
+            code: authError.code
+          }
         }),
         { 
           status: 400, 
@@ -298,7 +218,7 @@ serve(async (req) => {
       )
     }
     
-    console.log('✅ Step 1: Auth user created successfully')
+    console.log('✅ Step 2: Auth user created successfully')
 
     if (!authData.user) {
       return new Response(
@@ -313,38 +233,6 @@ serve(async (req) => {
     const authUserId = authData.user.id
     console.log('Auth user created successfully:', authUserId)
 
-    // Step 2: Check if user already exists (email unique constraint)
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id, email')
-      .eq('email', email)
-      .maybeSingle()
-
-    // If there's a database error (not just "not found"), log it but continue
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.warn('Error checking for existing user:', checkError)
-    }
-
-    if (existingUser) {
-      console.error('User with this email already exists:', existingUser.id)
-      // Try to clean up the auth user
-      try {
-        await supabase.auth.admin.deleteUser(authUserId)
-      } catch (cleanupError) {
-        console.error('Failed to cleanup auth user:', cleanupError)
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          error: `User with email ${email} already exists. Please use a different email.` 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
     // Step 3: Create or update profile in custom users table with 'pm' role
     // Note: A database trigger will create the user, then we UPDATE it with complete PM data
     console.log('Step 3: Ensuring user profile has correct PM data')
@@ -355,16 +243,19 @@ serve(async (req) => {
     console.log('Waiting for database trigger to create user...')
     await new Promise(resolve => setTimeout(resolve, 200))
     
-    let userData
-    let userError
-    
     // Try to update up to 3 times (in case trigger is slow)
+    let userData: any = null
+    let userError: any = null
+    let updatedData: any = null
+    let updateError: any = null
+    let insertError: any = null
+    
     for (let attempt = 1; attempt <= 3; attempt++) {
       console.log(`Update attempt ${attempt}/3...`)
       
       // Always UPDATE the user to ensure all PM fields are correct
       // This overwrites any incomplete data from the trigger
-      const { data: updatedData, error: updateError } = await supabase
+      const updateResult = await supabase
         .from('users')
         .update({
           name,  // Ensure name is set
@@ -378,6 +269,9 @@ serve(async (req) => {
         .eq('id', authUserId)
         .select('id, name, email, role, property_name, approved, subscribed, subscription_status')
         .single()
+      
+      updatedData = updateResult.data
+      updateError = updateResult.error
       
       console.log(`Update attempt ${attempt} result:`, { updatedData, updateError })
       
@@ -410,7 +304,7 @@ serve(async (req) => {
       console.log('User profile does not exist, INSERTING new profile...')
       userError = null // Reset error
       
-      const { data: insertedData, error: insertError } = await supabase
+      const insertResult = await supabase
         .from('users')
         .insert({
           id: authUserId, // Use the auth user ID to link with auth.users
@@ -425,8 +319,9 @@ serve(async (req) => {
         .select('id, name, email, role, property_name, approved, subscribed, subscription_status')
         .single()
       
-      userData = insertedData
-      userError = insertError
+      userData = insertResult.data
+      userError = insertResult.error
+      insertError = insertResult.error
     } else if (!userError && updatedData) {
       console.log('✅ User profile successfully UPDATED with PM data')
       console.log('Updated profile:', updatedData)

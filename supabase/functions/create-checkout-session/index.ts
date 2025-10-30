@@ -10,11 +10,11 @@ const corsHeaders = {
 }
 
 // TypeScript interface for the request body
-interface CreateSubscriptionRequest {
-  user_id: string
-  email: string
-  stripe_customer_id: string
+interface CreateCheckoutRequest {
+  customer_id: string
   plan: 'monthly' | 'yearly'
+  user_id?: string
+  email?: string
 }
 
 // Main handler function
@@ -26,14 +26,14 @@ serve(async (req) => {
 
   try {
     // Parse the request body
-    const body: CreateSubscriptionRequest = await req.json()
-    const { user_id, email, stripe_customer_id, plan } = body
+    const body: CreateCheckoutRequest = await req.json()
+    const { customer_id, plan, user_id, email } = body
 
     // Validate required fields
-    if (!user_id || !email || !stripe_customer_id || !plan) {
+    if (!customer_id || !plan) {
       return new Response(
         JSON.stringify({ 
-          error: 'Missing required fields. Required: user_id, email, stripe_customer_id, plan' 
+          error: 'Missing required fields. Required: customer_id, plan' 
         }),
         { 
           status: 400, 
@@ -53,21 +53,7 @@ serve(async (req) => {
       )
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid email format' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
     // Initialize Stripe client with secret key from environment variable
-    // TO ADD STRIPE SECRET KEY: Set it in your Supabase project secrets
-    // For production, replace sk_test_... with sk_live_...
     const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
       apiVersion: '2024-12-18.acacia',
       httpClient: Stripe.createFetchHttpClient(),
@@ -78,7 +64,6 @@ serve(async (req) => {
     const isTestMode = stripeSecretKey.startsWith('sk_test_')
     
     console.log('Stripe key detected:', stripeSecretKey.substring(0, 10) + '...')
-    console.log('Key starts with sk_test_:', stripeSecretKey.startsWith('sk_test_'))
     console.log('Mode detected:', isTestMode ? 'TEST' : 'LIVE')
 
     // Define price IDs based on plan and environment
@@ -92,7 +77,7 @@ serve(async (req) => {
 
     // Create a Stripe Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
-      customer: stripe_customer_id,
+      customer: customer_id,
       mode: 'subscription',  // Set mode to subscription for recurring payments
       payment_method_types: ['card'],
       line_items: [
@@ -102,29 +87,30 @@ serve(async (req) => {
         },
       ],
       metadata: {
-        user_id,
+        ...(user_id && { user_id }),
         plan,
-        email,  // Store email in metadata for reference
+        ...(email && { email }),
       },
       // Success and cancel URLs - user will be redirected here after payment
       success_url: `${Deno.env.get('SITE_URL') || 'http://localhost:5174'}?session_id={CHECKOUT_SESSION_ID}&payment=success`,
       cancel_url: `${Deno.env.get('SITE_URL') || 'http://localhost:5174'}?payment=cancelled`,
-      // Note: Don't use customer_email when customer is already specified
-      // The customer object already has the email associated
       // Allow promotion codes
       allow_promotion_codes: true,
       // Set billing address collection as required
       billing_address_collection: 'required',
+      // Set subscription data
+      subscription_data: {
+        metadata: {
+          ...(user_id && { user_id }),
+          plan,
+          ...(email && { email }),
+        },
+      },
     })
 
     console.log('Stripe Checkout session created:', session.id)
-    console.log('Resolved SITE_URL:', Deno.env.get('SITE_URL'))
-    console.log('Checkout session URL:', session.url)
-    console.log('Checkout success_url:', session.success_url)
-    console.log('Checkout cancel_url:', session.cancel_url)
 
     // Return success response with checkout URL
-    // The frontend should redirect the user to this URL
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -138,7 +124,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Error creating subscription checkout:', error)
+    console.error('Error creating checkout session:', error)
     
     // Handle Stripe API errors
     if (error instanceof Stripe.errors.StripeError) {
@@ -168,22 +154,25 @@ DEPLOYMENT INSTRUCTIONS:
 1. Set the Stripe secret key as a Supabase secret:
    supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx
 
-2. Deploy the function:
-   supabase functions deploy create-subscription
+2. Set the site URL (optional, defaults to https://admin.asine.app):
+   supabase secrets set SITE_URL=https://your-domain.com
 
-3. Test the function from your frontend:
+3. Deploy the function:
+   supabase functions deploy create-checkout-session
+
+4. Test the function from your frontend:
    
-   fetch('https://YOUR_PROJECT.supabase.co/functions/v1/create-subscription', {
+   fetch('https://YOUR_PROJECT.supabase.co/functions/v1/create-checkout-session', {
      method: 'POST',
      headers: {
        'Content-Type': 'application/json',
        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
      },
      body: JSON.stringify({
-       user_id: 'uuid-of-supabase-user',
-       email: 'pm@example.com',
-       stripe_customer_id: 'cus_123456789',
-       plan: 'monthly'
+       customer_id: 'cus_123456789',
+       plan: 'monthly',
+       user_id: 'uuid-of-supabase-user', // optional
+       email: 'pm@example.com' // optional
      })
    })
    .then(res => res.json())
@@ -196,16 +185,16 @@ DEPLOYMENT INSTRUCTIONS:
 
 WORKFLOW:
 1. Create Stripe customer using create-stripe-customer function
-2. Call this function with the customer_id
+2. Call this function with the customer_id and plan
 3. Redirect user to the returned URL
-4. After successful payment, Stripe will redirect to success_url
-5. Use Stripe webhooks to handle subscription events (created, updated, canceled)
+4. After successful payment, Stripe will redirect to success_url (dashboard)
+5. Use Stripe webhooks to handle subscription events
 
 UPGRADING TO PRODUCTION:
 - Replace sk_test_... with sk_live_... in Supabase secrets
 - Live monthly price ID: price_1SMce8LC1RJAUbjMf3MZyCav
 - Live yearly price ID: price_1SMcgxLC1RJAUbjMCsGkOzCK
-- Update success_url and cancel_url for production domain
+- Update SITE_URL for production domain
 - The function will automatically detect test vs live mode based on your secret key
 
 TESTING:
@@ -215,10 +204,10 @@ TESTING:
 - Use any postal code
 - Stripe test mode: https://stripe.com/docs/testing
 
-4. Example response on success:
-   {
-     "success": true,
-     "url": "https://checkout.stripe.com/pay/cs_test_123...",
-     "session_id": "cs_test_123..."
-   }
+Example response on success:
+{
+  "success": true,
+  "url": "https://checkout.stripe.com/pay/cs_test_123...",
+  "session_id": "cs_test_123..."
+}
 */

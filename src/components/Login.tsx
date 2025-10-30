@@ -63,7 +63,19 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
       } else {
         const error = await response.json();
         console.error('Login failed:', error);
-        setErrorMessage('Password is wrong');
+        
+        // Handle different error types from Supabase
+        if (error.error_code === 'email_not_confirmed') {
+          setErrorMessage('Please check your email and click the confirmation link before signing in.');
+        } else if (error.error_code === 'invalid_credentials') {
+          setErrorMessage('Invalid email or password. Please try again.');
+        } else if (error.error_code === 'too_many_requests') {
+          setErrorMessage('Too many login attempts. Please try again later.');
+        } else if (error.msg) {
+          setErrorMessage(error.msg);
+        } else {
+          setErrorMessage('Login failed. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
