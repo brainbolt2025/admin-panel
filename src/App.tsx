@@ -45,33 +45,30 @@ function App() {
     checkAuth()
   }, [])
 
-  // Handle payment success redirect
+  // Handle payment success redirect (just log, let Login component handle the UI)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const sessionId = urlParams.get('session_id')
     const paymentStatus = urlParams.get('payment')
     
     if (paymentStatus === 'success' && sessionId) {
-      console.log('Payment successful, session ID:', sessionId)
-      // Clear the URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname)
-      // The user should already be logged in if payment was successful
-      // The webhook should have updated their subscription status
+      console.log('App: Payment successful, session ID:', sessionId)
+      // Don't clear URL parameters here - let Login component handle it
+      // The Login component will show the success message and clear the params
     } else if (paymentStatus === 'cancelled') {
-      console.log('Payment was cancelled')
-      // Clear the URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname)
+      console.log('App: Payment was cancelled')
+      // Don't clear URL parameters here - let Login component handle it
     }
   }, [])
 
   const checkTokenValidity = async (token: string): Promise<boolean> => {
     try {
       const response = await fetch(
-        'https://qmhmgjzkpfzxfjdurigu.supabase.co/auth/v1/user',
+        `${config.supabase.url}/auth/v1/user`,
         {
           method: 'GET',
           headers: {
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y',
+            'apikey': config.supabase.anonKey,
             'Authorization': `Bearer ${token}`
           }
         }
@@ -88,13 +85,13 @@ function App() {
       if (!refreshToken) return false
 
       const response = await fetch(
-        'https://qmhmgjzkpfzxfjdurigu.supabase.co/auth/v1/token?grant_type=refresh_token',
+        `${config.supabase.url}/auth/v1/token?grant_type=refresh_token`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y',
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+            'apikey': config.supabase.anonKey,
+            'Authorization': `Bearer ${config.supabase.anonKey}`
           },
           body: JSON.stringify({
             refresh_token: refreshToken

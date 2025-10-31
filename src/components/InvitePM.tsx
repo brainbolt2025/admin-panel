@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UserPlus, Mail, Calendar, CheckCircle, Clock, XCircle, ArrowLeft } from 'lucide-react';
+import { config } from '../config';
 
 interface Invitation {
   id: string;
@@ -95,13 +96,13 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
       }
 
       const response = await fetch(
-        'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/invite-pm',
+        `${config.supabase.url}/functions/v1/invite-pm`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+            'apikey': config.supabase.anonKey
           },
           body: JSON.stringify({
             email: formData.email,

@@ -26,6 +26,18 @@ The function uses the same `STRIPE_SECRET_KEY` secret from your previous functio
 6. Value: `sk_test_xxx` (see .env.local for actual key)
 7. Click **Save**
 
+**Optional - Set SITE_URL for custom redirect URL:**
+1. Go to **Project Settings** → **Edge Functions** → **Secrets**
+2. Click **Add Secret**
+3. Key: `SITE_URL`
+4. Value: `https://your-domain.com` (or leave empty to use defaults)
+5. Click **Save**
+
+**Automatic redirect URL behavior:**
+- If `SITE_URL` is set, it will be used
+- Otherwise, in **test mode** (sk_test_...), defaults to `http://localhost:5173`
+- Otherwise, in **live mode** (sk_live_...), defaults to `https://admin.asine.app`
+
 ### 2. Create Price IDs in Stripe Dashboard
 
 Before deploying, you need to create products and prices in Stripe:

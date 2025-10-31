@@ -90,6 +90,11 @@ serve(async (req) => {
           ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
           : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')  // LIVE_YEARLY_PRICE_ID
 
+    // Determine the site URL based on environment
+    // In test mode, use localhost for local development, otherwise use production
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
+    console.log('Using site URL:', siteUrl)
+
     // Create a Stripe Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
       customer: stripe_customer_id,
@@ -107,8 +112,8 @@ serve(async (req) => {
         email,  // Store email in metadata for reference
       },
       // Success and cancel URLs - user will be redirected here after payment
-      success_url: `${Deno.env.get('SITE_URL') || 'http://localhost:5174'}?session_id={CHECKOUT_SESSION_ID}&payment=success`,
-      cancel_url: `${Deno.env.get('SITE_URL') || 'http://localhost:5174'}?payment=cancelled`,
+      success_url: `${siteUrl}?session_id={CHECKOUT_SESSION_ID}&payment=success`,
+      cancel_url: `${siteUrl}?payment=cancelled`,
       // Note: Don't use customer_email when customer is already specified
       // The customer object already has the email associated
       // Allow promotion codes

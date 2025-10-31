@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
 
@@ -15,6 +15,22 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // Check if user just completed payment
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+    const sessionId = urlParams.get('session_id');
+    console.log('Login component - paymentStatus:', paymentStatus, 'sessionId:', sessionId);
+    if (paymentStatus === 'success') {
+      console.log('Setting showPaymentSuccess to true');
+      setShowPaymentSuccess(true);
+      // Clear the URL parameter
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -94,6 +110,27 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
           <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
             Sign in
           </h1>
+
+          {/* Payment Success Message */}
+          {showPaymentSuccess && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-green-800">
+                    Payment Successful!
+                  </h3>
+                  <div className="mt-2 text-sm text-green-700">
+                    <p>Your subscription has been activated. Please check your email and click the confirmation link to verify your account before signing in.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
