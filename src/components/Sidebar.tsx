@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Grid3X3, Shield, Building, FileText, X } from 'lucide-react';
+import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, CheckCircle } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,13 +8,47 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarProps) => {
+  // Get user role from localStorage
+  const getUserRole = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        // Check user_metadata first (Supabase auth stores role here)
+        if (user.user_metadata?.role) {
+          return user.user_metadata.role;
+        }
+        // Fallback to raw_user_meta_data
+        if (user.raw_user_meta_data?.role) {
+          return user.raw_user_meta_data.role;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+    }
+    return 'super_admin'; // Default to super admin if role not found
+  };
 
-  const navigationItems = [
+  const userRole = getUserRole();
+  const isPM = userRole === 'pm';
+
+  // Navigation items for Super Admin
+  const adminNavigationItems = [
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
     { id: 'PM Accounts', label: 'PM Accounts', icon: Shield },
     { id: 'Properties', label: 'Properties', icon: Building },
     { id: 'Audit Logs', label: 'Audit Logs', icon: FileText },
   ];
+
+  // Navigation items for PM
+  const pmNavigationItems = [
+    { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
+    { id: 'Work Orders', label: 'Work Orders', icon: ClipboardList },
+    { id: 'Users', label: 'Users', icon: Users },
+    { id: 'Approvals', label: 'Approvals', icon: CheckCircle },
+  ];
+
+  const navigationItems = isPM ? pmNavigationItems : adminNavigationItems;
 
   return (
     <>
@@ -39,10 +72,14 @@ const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarPr
           <div className="flex items-center justify-between p-6">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">SA</span>
+                <span className="text-white font-bold text-sm">
+                  {isPM ? 'PM' : 'SA'}
+                </span>
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-800">Super Admin</h1>
+                <h1 className="text-lg font-semibold text-gray-800">
+                  {isPM ? 'Property Manager' : 'Super Admin'}
+                </h1>
               </div>
             </div>
             <div

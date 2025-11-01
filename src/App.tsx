@@ -6,6 +6,9 @@ import Dashboard from './components/Dashboard'
 import PropertyManagers from './components/PropertyManagers'
 import InvitePM from './components/InvitePM'
 import Subscription from './components/Subscription'
+import WorkOrders from './components/WorkOrders'
+import Users from './components/Users'
+import Approvals from './components/Approvals'
 import { config } from './config'
 
 function App() {
@@ -187,6 +190,12 @@ function App() {
         return <Dashboard />
       case 'PM Accounts':
         return <PropertyManagers />
+      case 'Work Orders':
+        return <WorkOrders />
+      case 'Users':
+        return <Users />
+      case 'Approvals':
+        return <Approvals />
       default:
         return <Dashboard />
     }
