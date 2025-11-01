@@ -145,6 +145,84 @@ serve(async (req) => {
             })
         }
 
+        // Get user details for verification email
+        // Get email from session customer_details or fetch from user record
+        const userEmail = session.customer_details?.email || session.metadata?.email
+        const userName = session.customer_details?.name || session.metadata?.name
+
+        // Fetch user record to get complete details
+        let userEmailFinal = userEmail
+        let userNameFinal = userName
+
+        if (!userEmailFinal || !userNameFinal) {
+          const { data: userData, error: userFetchError } = await supabaseAdmin
+            .from('users')
+            .select('email, name')
+            .eq('id', user_id)
+            .single()
+
+          if (!userFetchError && userData) {
+            userEmailFinal = userEmailFinal || userData.email
+            userNameFinal = userNameFinal || userData.name || 'Property Manager'
+          }
+        }
+
+        // Generate verification token
+        // Using crypto.randomUUID() for secure random token generation
+        const verificationToken = crypto.randomUUID()
+
+        // Store verification token in user record (optional: if you have a verification_token column)
+        // If your users table has a verification_token column, uncomment this:
+        /*
+        await supabaseAdmin
+          .from('users')
+          .update({ 
+            verification_token: verificationToken,
+            verification_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
+          })
+          .eq('id', user_id)
+        */
+
+        // Send verification email via send-verification-email function
+        if (userEmailFinal && userNameFinal) {
+          try {
+            const functionsUrl = `${supabaseUrl}/functions/v1`
+            const emailResponse = await fetch(`${functionsUrl}/send-verification-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceRoleKey}`,
+                'apikey': supabaseServiceRoleKey,
+              },
+              body: JSON.stringify({
+                email: userEmailFinal,
+                name: userNameFinal,
+                token: verificationToken,
+                subject: 'Activate your Asine account',
+              }),
+            })
+
+            const emailResult = await emailResponse.json()
+            
+            if (emailResult.success) {
+              console.log('Verification email sent successfully to:', userEmailFinal)
+              console.log('Email Mailgun ID:', emailResult.mailgun_id)
+            } else {
+              console.error('Failed to send verification email:', emailResult.error)
+              // Don't fail the webhook if email fails - log it and continue
+            }
+          } catch (emailError) {
+            console.error('Error calling send-verification-email function:', emailError)
+            // Don't fail the webhook if email fails - log it and continue
+          }
+        } else {
+          console.warn('Could not send verification email: missing email or name', {
+            email: userEmailFinal,
+            name: userNameFinal,
+            user_id,
+          })
+        }
+
         break
       }
 
@@ -245,6 +323,9 @@ DEPLOYMENT INSTRUCTIONS:
 1. Set environment variables in Supabase Dashboard:
    - STRIPE_SECRET_KEY (same as other functions)
    - STRIPE_WEBHOOK_SECRET (webhook signing secret from Stripe)
+   - MAILGUN_DOMAIN (for verification emails)
+   - MAILGUN_API_KEY (for verification emails)
+   - BASE_URL (for verification links)
 
 2. Deploy the function:
    supabase functions deploy stripe-webhook
@@ -273,6 +354,11 @@ Make sure your users table has these columns:
 - plan (TEXT)
 - subscription_status (TEXT)
 
+Optional: Add verification token columns for email verification:
+- verification_token (TEXT)
+- verification_token_expires_at (TIMESTAMPTZ)
+- email_verified (BOOLEAN)
+
 Optional: Create a subscriptions table for tracking subscription history:
 CREATE TABLE subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -285,12 +371,26 @@ CREATE TABLE subscriptions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+EMAIL VERIFICATION FLOW:
+========================
+After a successful checkout.session.completed event:
+1. User subscription is activated in the database
+2. Verification token is generated (using crypto.randomUUID())
+3. Verification email is automatically sent via send-verification-email function
+4. Email contains a link: ${BASE_URL}/verify?token=${token}
+5. User clicks link to verify their email address
+
+Note: If you want to store verification tokens in the database, uncomment the 
+code block that updates the users table with verification_token and 
+verification_token_expires_at (around line 176).
+
 SWITCHING TO LIVE MODE:
 =======================
 1. Update STRIPE_SECRET_KEY in Supabase Secrets: sk_test_... → sk_live_...
 2. Create a new webhook endpoint in Stripe (Live mode)
 3. Update STRIPE_WEBHOOK_SECRET with the new webhook signing secret
-4. Redeploy the function with production settings
+4. Update BASE_URL to production URL: https://admin.asine.app
+5. Redeploy the function with production settings
 
 SAFETY:
 =======
@@ -298,4 +398,5 @@ SAFETY:
 - Never expose your webhook secret
 - Test in test mode before switching to live
 - Monitor webhook events in Stripe Dashboard
+- Email sending failures don't fail the webhook (logged only)
 */
