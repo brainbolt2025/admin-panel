@@ -227,17 +227,47 @@ serve(async (req) => {
         // Using crypto.randomUUID() for secure random token generation
         const verificationToken = crypto.randomUUID()
 
-        // Store verification token in user record (optional: if you have a verification_token column)
-        // If your users table has a verification_token column, uncomment this:
-        /*
-        await supabaseAdmin
+        // Store verification token in user record
+        // This allows the verify-email function to validate the token
+        // Note: Make sure your users table has verification_token and verification_token_expires_at columns
+        console.log('Attempting to store verification token for user:', user_id)
+        const { data: tokenUpdateData, error: tokenUpdateError } = await supabaseAdmin
           .from('users')
           .update({ 
             verification_token: verificationToken,
             verification_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
           })
           .eq('id', user_id)
-        */
+          .select('id, verification_token')
+        
+        if (tokenUpdateError) {
+          console.error('❌ Error storing verification token:', {
+            error: tokenUpdateError,
+            message: tokenUpdateError.message,
+            code: tokenUpdateError.code,
+            details: tokenUpdateError.details,
+            hint: tokenUpdateError.hint,
+            user_id,
+            token: verificationToken.substring(0, 20) + '...',
+          })
+          
+          // Check if it's a missing column error
+          if (tokenUpdateError.code === '42703' || tokenUpdateError.message?.includes('column') || tokenUpdateError.message?.includes('does not exist')) {
+            console.error('⚠️ DATABASE SCHEMA ERROR: verification_token column is missing!')
+            console.error('🔧 FIX: Run this SQL in Supabase SQL Editor:')
+            console.error('   ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;')
+            console.error('   ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;')
+            console.error('   ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires_at TIMESTAMPTZ;')
+          }
+          // Don't fail the webhook if token storage fails - log it and continue
+          // The email will still be sent, but verification won't work until columns are added
+        } else {
+          console.log('✅ Verification token stored successfully:', {
+            user_id,
+            token: verificationToken.substring(0, 20) + '...',
+            updated_user: tokenUpdateData?.[0]?.id,
+          })
+        }
 
         // Send verification email via send-verification-email function
         console.log('Preparing to send verification email:', {
@@ -417,7 +447,10 @@ DEPLOYMENT INSTRUCTIONS:
    - STRIPE_WEBHOOK_SECRET (webhook signing secret from Stripe)
    - MAILGUN_DOMAIN (for verification emails)
    - MAILGUN_API_KEY (for verification emails)
-   - BASE_URL (for verification links)
+   - BASE_URL (optional - for verification links. Auto-detected from Stripe mode if not set)
+     * Test mode (sk_test_): defaults to http://localhost:5173
+     * Live mode (sk_live_): defaults to https://admin.asine.app
+     * Override by setting BASE_URL secret (e.g., http://localhost:3000 for custom port)
 
 2. Deploy the function WITHOUT JWT verification:
    supabase functions deploy stripe-webhook --no-verify-jwt
@@ -473,11 +506,15 @@ After a successful checkout.session.completed event:
 2. Verification token is generated (using crypto.randomUUID())
 3. Verification email is automatically sent via send-verification-email function
 4. Email contains a link: ${BASE_URL}/verify?token=${token}
+   - BASE_URL is dynamically determined:
+     * If BASE_URL secret is set: uses that value
+     * If in Stripe test mode (sk_test_): uses http://localhost:5173
+     * If in Stripe live mode (sk_live_): uses https://admin.asine.app
 5. User clicks link to verify their email address
 
 Note: If you want to store verification tokens in the database, uncomment the 
 code block that updates the users table with verification_token and 
-verification_token_expires_at (around line 176).
+verification_token_expires_at (around line 230).
 
 SWITCHING TO LIVE MODE:
 =======================

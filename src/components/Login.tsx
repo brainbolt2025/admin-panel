@@ -18,18 +18,77 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   
   // Check if user just completed payment
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  // Check if user clicked verification link
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  
+  const handleVerification = async (token: string) => {
+    setIsVerifying(true);
+    setVerificationMessage(null);
+    
+    try {
+      console.log('Verification token received:', token);
+      
+      // Call verify-email Edge Function to verify the token
+      const response = await fetch(
+        `${config.supabase.url}/functions/v1/verify-email?token=${token}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': config.supabase.anonKey,
+          }
+        }
+      );
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setVerificationMessage('Email verified successfully! You can now sign in with your credentials.');
+        // Optionally auto-clear the message after a few seconds
+        setTimeout(() => {
+          setVerificationMessage(null);
+          setVerificationToken(null);
+        }, 5000);
+      } else {
+        // Show more detailed error message including hints
+        const errorMsg = data.error || 'Verification failed. The link may be expired or invalid.';
+        const hintMsg = data.hint ? `\n\nHint: ${data.hint}` : '';
+        setVerificationMessage(errorMsg + hintMsg);
+        console.error('Verification error details:', data);
+      }
+    } catch (error) {
+      console.error('Verification error:', error);
+      setVerificationMessage('An error occurred during verification. Please try again or contact support.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
   
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
     const sessionId = urlParams.get('session_id');
-    console.log('Login component - paymentStatus:', paymentStatus, 'sessionId:', sessionId);
+    const token = urlParams.get('token');
+    
+    console.log('Login component - paymentStatus:', paymentStatus, 'sessionId:', sessionId, 'token:', token);
+    
     if (paymentStatus === 'success') {
       console.log('Setting showPaymentSuccess to true');
       setShowPaymentSuccess(true);
       // Clear the URL parameter
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+    
+    // Handle verification token
+    if (token) {
+      setVerificationToken(token);
+      handleVerification(token);
+      // Clear the URL parameter after processing
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,6 +185,31 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
                   </h3>
                   <div className="mt-2 text-sm text-green-700">
                     <p>Your subscription has been activated. Please check your email and click the confirmation link to verify your account before signing in.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Email Verification Message */}
+          {verificationToken && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  {isVerifying ? (
+                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                <div className="ml-3 flex-1">
+                  <h3 className="text-sm font-medium text-blue-800">
+                    {isVerifying ? 'Verifying Email...' : 'Verification Link Received'}
+                  </h3>
+                  <div className="mt-2 text-sm text-blue-700">
+                    {verificationMessage || 'Processing your verification request...'}
                   </div>
                 </div>
               </div>

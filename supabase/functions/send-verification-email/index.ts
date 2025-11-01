@@ -64,7 +64,28 @@ serve(async (req) => {
     const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
     const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
     const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us' // 'us' or 'eu'
-    const BASE_URL = Deno.env.get('BASE_URL') || 'https://admin.asine.app'
+    
+    // Determine BASE_URL dynamically based on environment
+    // Priority: 1. BASE_URL secret, 2. Auto-detect from Stripe mode, 3. Default
+    let BASE_URL = Deno.env.get('BASE_URL')
+    
+    if (!BASE_URL) {
+      // Auto-detect environment from Stripe secret key
+      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+      const isTestMode = stripeSecretKey.startsWith('sk_test_')
+      
+      if (isTestMode) {
+        // Test/Development mode - use localhost
+        BASE_URL = 'http://localhost:5173'
+        console.log('Auto-detected test mode: Using localhost for BASE_URL')
+      } else {
+        // Live/Production mode - use production domain
+        BASE_URL = 'https://admin.asine.app'
+        console.log('Auto-detected live mode: Using production domain for BASE_URL')
+      }
+    } else {
+      console.log('Using BASE_URL from environment:', BASE_URL)
+    }
 
     // Validate Mailgun configuration
     if (!MAILGUN_API_KEY) {
@@ -332,7 +353,13 @@ DEPLOYMENT INSTRUCTIONS:
 1. Set Mailgun configuration in Supabase secrets:
    supabase secrets set MAILGUN_DOMAIN=mg.asine.app
    supabase secrets set MAILGUN_API_KEY=key-xxxxxxxxxxxxxxxxxxxxx
-   supabase secrets set BASE_URL=https://admin.asine.app
+   supabase secrets set BASE_URL=http://localhost:5173  # Optional - auto-detected if not set
+   
+   BASE_URL is automatically determined:
+   - If BASE_URL secret is set: uses that value
+   - If STRIPE_SECRET_KEY starts with sk_test_: uses http://localhost:5173 (test/dev)
+   - If STRIPE_SECRET_KEY starts with sk_live_: uses https://admin.asine.app (production)
+   - You can override by setting BASE_URL secret (e.g., http://localhost:3000)
 
 2. Deploy the function:
    supabase functions deploy send-verification-email
