@@ -147,21 +147,118 @@ serve(async (req) => {
     // If it fails with "User already registered", we know the email exists
     console.log('Step 1b: Checking auth.users table by attempting signup...')
 
-    // Step 2: Create user in Supabase Auth using regular signup
-    console.log('Step 2: Attempting to create auth user with email:', email)
+    // Step 2: Create user in Supabase Auth using Admin API
+    // Using Admin API prevents automatic email confirmation from being sent
+    // We'll send custom verification email via Mailgun after successful Stripe payment
+    console.log('Step 2: Creating auth user via Admin API with email:', email)
     console.log('Setting auth metadata:', { name, property_name, role: 'pm' })
     
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name,
-          property_name,
-          role: 'pm'
+    let authData: any = null
+    let authError: any = null
+    
+    // Use direct HTTP call to Admin API (same approach as invite-pm function)
+    // This bypasses email confirmation requirements and is more reliable
+    console.log('Calling Admin API via HTTP with:', { email, hasPassword: !!password })
+    
+    try {
+      const adminResponse = await fetch(`${finalSupabaseUrl}/auth/v1/admin/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': finalSupabaseServiceKey,
+          'Authorization': `Bearer ${finalSupabaseServiceKey}`
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          user_metadata: {
+            name,
+            property_name,
+            role: 'pm'
+          },
+          email_confirm: false // Don't require email confirmation
+        })
+      })
+      
+      const adminResult = await adminResponse.json()
+      
+      console.log('Admin API HTTP response:', {
+        status: adminResponse.status,
+        statusText: adminResponse.statusText,
+        ok: adminResponse.ok,
+        hasResult: !!adminResult,
+        resultKeys: adminResult ? Object.keys(adminResult) : [],
+        resultId: adminResult?.id,
+        errorMessage: adminResult?.error_description || adminResult?.message
+      })
+      
+      if (!adminResponse.ok) {
+        authError = {
+          message: adminResult.error_description || adminResult.message || `HTTP ${adminResponse.status}`,
+          status: adminResponse.status,
+          code: adminResult.error || 'admin_api_error'
         }
+        console.error('❌ Admin API HTTP error:', authError)
+      } else {
+        // Success - wrap in same format as signUp for consistency
+        authData = { user: adminResult }
+        console.log('✅ Admin API user created successfully via HTTP:', {
+          id: adminResult.id,
+          email: adminResult.email,
+          metadata: adminResult.user_metadata
+        })
       }
-    })
+    } catch (httpError) {
+      authError = httpError
+      console.error('❌ Admin API HTTP request failed:', {
+        message: httpError?.message,
+        name: httpError?.name,
+        fullError: httpError
+      })
+    }
+    
+    // If Admin API fails, fall back to regular signup (but this may still try to send emails)
+    if (authError || !authData) {
+      console.warn('Admin API failed, trying regular signup as fallback:', {
+        hasError: !!authError,
+        hasData: !!authData,
+        error: authError
+      })
+      
+      try {
+        const signUpResult = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name,
+              property_name,
+              role: 'pm'
+            }
+          }
+        })
+        
+        console.log('Regular signup result:', {
+          hasData: !!signUpResult.data,
+          hasError: !!signUpResult.error,
+          hasUser: !!signUpResult.data?.user,
+          userId: signUpResult.data?.user?.id,
+          errorMessage: signUpResult.error?.message
+        })
+        
+        if (signUpResult.error) {
+          authError = signUpResult.error
+          authData = null
+        } else {
+          authData = signUpResult.data
+          authError = null
+        }
+      } catch (signupError) {
+        console.error('Regular signup also failed:', signupError)
+        authError = signupError
+        authData = null
+      }
+    }
     
     // Log the created user to verify metadata was set
     if (authData.user) {
@@ -220,9 +317,31 @@ serve(async (req) => {
     
     console.log('✅ Step 2: Auth user created successfully')
 
-    if (!authData.user) {
+    // Extract user ID - Admin API returns user directly in data, regular signup wraps it in user property
+    let authUserId: string | null = null
+    
+    if (authData?.user?.id) {
+      // Regular signup format: { user: { id: '...' } }
+      authUserId = authData.user.id
+    } else if (authData?.id) {
+      // Admin API format: { id: '...', email: '...', ... }
+      authUserId = authData.id
+    } else if (authData?.user) {
+      // Fallback: try to get id from user object
+      authUserId = authData.user.id || null
+    }
+
+    if (!authUserId) {
+      console.error('❌ No user ID found in auth data:', JSON.stringify(authData, null, 2))
       return new Response(
-        JSON.stringify({ error: 'User creation failed - no user data returned' }),
+        JSON.stringify({ 
+          error: 'User creation failed - no user ID returned',
+          debug: {
+            hasAuthData: !!authData,
+            authDataKeys: authData ? Object.keys(authData) : [],
+            authDataUser: authData?.user ? Object.keys(authData.user) : [],
+          }
+        }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -230,8 +349,12 @@ serve(async (req) => {
       )
     }
 
-    const authUserId = authData.user.id
     console.log('Auth user created successfully:', authUserId)
+    console.log('Auth user data structure:', {
+      hasUser: !!authData?.user,
+      hasId: !!authData?.id,
+      userId: authUserId,
+    })
 
     // Step 3: Create or update profile in custom users table with 'pm' role
     // Note: A database trigger will create the user, then we UPDATE it with complete PM data

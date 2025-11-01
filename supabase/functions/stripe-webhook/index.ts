@@ -6,6 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 // CORS headers for cross-origin requests
+// Note: Stripe webhooks don't use JWT authorization - they use stripe-signature header
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
@@ -17,6 +18,15 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // Log all incoming request details for debugging
+  console.log('Webhook request received:', {
+    method: req.method,
+    url: req.url,
+    hasStripeSignature: !!req.headers.get('stripe-signature'),
+    hasAuthorization: !!req.headers.get('authorization'),
+    allHeaders: Object.fromEntries(req.headers.entries()),
+  })
 
   try {
     // Get the Stripe signature from headers
@@ -66,13 +76,39 @@ serve(async (req) => {
     }
 
     // Verify the webhook signature
+    // Note: In Deno/Edge Functions, must use constructEventAsync (not constructEvent)
+    // because SubtleCrypto is async-only
     let event: Stripe.Event
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-    } catch (err) {
-      console.error('Webhook signature verification failed:', err)
+      console.log('Verifying webhook signature:', {
+        hasSignature: !!signature,
+        signatureLength: signature?.length,
+        hasBody: !!body,
+        bodyLength: body?.length,
+        hasWebhookSecret: !!webhookSecret,
+        webhookSecretPrefix: webhookSecret ? webhookSecret.substring(0, 10) + '...' : 'missing',
+      })
+      
+      // Use constructEventAsync for Deno/Edge Functions (async crypto required)
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret)
+      
+      console.log('✅ Signature verification successful')
+    } catch (err: any) {
+      console.error('❌ Webhook signature verification failed:', {
+        errorMessage: err?.message,
+        errorType: err?.name,
+        hasWebhookSecret: !!webhookSecret,
+        webhookSecretPrefix: webhookSecret ? webhookSecret.substring(0, 10) + '...' : 'missing',
+        signaturePrefix: signature ? signature.substring(0, 20) + '...' : 'missing',
+        bodyLength: body?.length,
+        fullError: err,
+      })
+      
       return new Response(
-        JSON.stringify({ error: 'Invalid signature' }),
+        JSON.stringify({ 
+          error: 'Invalid signature',
+          hint: 'Check that STRIPE_WEBHOOK_SECRET matches the signing secret from your Stripe webhook endpoint. Make sure you\'re using the correct secret for the correct Stripe mode (test vs live).'
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -88,13 +124,33 @@ serve(async (req) => {
         const session = event.data.object as Stripe.Checkout.Session
         
         console.log('Processing checkout.session.completed for session:', session.id)
+        console.log('Session details:', {
+          id: session.id,
+          customer: session.customer,
+          customer_details: session.customer_details,
+          metadata: session.metadata,
+          payment_status: session.payment_status,
+          mode: session.mode,
+        })
         
         const user_id = session.metadata?.user_id
         const plan = session.metadata?.plan || session.metadata?.plan_type
         const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id
 
+        console.log('Extracted data:', {
+          user_id,
+          plan,
+          customerId,
+          hasUserId: !!user_id,
+          hasCustomerId: !!customerId,
+        })
+
         if (!user_id || !customerId) {
-          console.error('Missing user_id or customer in session metadata')
+          console.error('❌ Missing user_id or customer in session metadata', {
+            user_id,
+            customerId,
+            metadata: session.metadata,
+          })
           return new Response(
             JSON.stringify({ error: 'Missing required metadata' }),
             { 
@@ -184,10 +240,26 @@ serve(async (req) => {
         */
 
         // Send verification email via send-verification-email function
+        console.log('Preparing to send verification email:', {
+          hasEmail: !!userEmailFinal,
+          hasName: !!userNameFinal,
+          email: userEmailFinal,
+          name: userNameFinal,
+          token: verificationToken.substring(0, 20) + '...',
+        })
+        
         if (userEmailFinal && userNameFinal) {
           try {
             const functionsUrl = `${supabaseUrl}/functions/v1`
-            const emailResponse = await fetch(`${functionsUrl}/send-verification-email`, {
+            const emailEndpoint = `${functionsUrl}/send-verification-email`
+            
+            console.log('Calling send-verification-email function:', {
+              endpoint: emailEndpoint,
+              email: userEmailFinal,
+              name: userNameFinal,
+            })
+            
+            const emailResponse = await fetch(emailEndpoint, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -202,24 +274,44 @@ serve(async (req) => {
               }),
             })
 
+            console.log('Email function response:', {
+              status: emailResponse.status,
+              statusText: emailResponse.statusText,
+              ok: emailResponse.ok,
+            })
+
             const emailResult = await emailResponse.json()
             
+            console.log('Email function result:', emailResult)
+            
             if (emailResult.success) {
-              console.log('Verification email sent successfully to:', userEmailFinal)
+              console.log('✅ Verification email sent successfully to:', userEmailFinal)
               console.log('Email Mailgun ID:', emailResult.mailgun_id)
             } else {
-              console.error('Failed to send verification email:', emailResult.error)
+              console.error('❌ Failed to send verification email:', {
+                error: emailResult.error,
+                fullResult: emailResult,
+              })
               // Don't fail the webhook if email fails - log it and continue
             }
           } catch (emailError) {
-            console.error('Error calling send-verification-email function:', emailError)
+            console.error('❌ Error calling send-verification-email function:', {
+              message: emailError?.message,
+              name: emailError?.name,
+              stack: emailError?.stack,
+              fullError: emailError,
+            })
             // Don't fail the webhook if email fails - log it and continue
           }
         } else {
-          console.warn('Could not send verification email: missing email or name', {
+          console.error('❌ Could not send verification email: missing email or name', {
             email: userEmailFinal,
             name: userNameFinal,
             user_id,
+            sessionEmail: session.customer_details?.email,
+            sessionName: session.customer_details?.name,
+            metadataEmail: session.metadata?.email,
+            metadataName: session.metadata?.name,
           })
         }
 
@@ -327,8 +419,11 @@ DEPLOYMENT INSTRUCTIONS:
    - MAILGUN_API_KEY (for verification emails)
    - BASE_URL (for verification links)
 
-2. Deploy the function:
-   supabase functions deploy stripe-webhook
+2. Deploy the function WITHOUT JWT verification:
+   supabase functions deploy stripe-webhook --no-verify-jwt
+   
+   IMPORTANT: Use --no-verify-jwt because Stripe webhooks don't use JWT.
+   Security is handled via Stripe signature verification instead.
 
 3. Copy the function URL:
    https://YOUR_PROJECT.supabase.co/functions/v1/stripe-webhook
