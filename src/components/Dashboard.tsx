@@ -132,7 +132,7 @@ const Dashboard = () => {
         // Fetch work orders first
         const { data: ordersData, error: ordersError } = await supabaseClient
           .from('work_orders')
-          .select('id, title, description, priority, status, tenant_id, property_id')
+          .select('id, title, description, priority, status, tenant_name')
           .order('id', { ascending: false })
           .limit(3);
 
@@ -149,33 +149,14 @@ const Dashboard = () => {
           return;
         }
 
-        // Collect unique tenant and property IDs
-        const tenantIds = [...new Set(ordersData.map((o: any) => o.tenant_id).filter(Boolean))];
-        const propertyIds = [...new Set(ordersData.map((o: any) => o.property_id).filter(Boolean))];
-
-        // Fetch tenant and property names in batch
-        const [tenantsResult, propertiesResult] = await Promise.all([
-          tenantIds.length > 0
-            ? supabaseClient.from('tenants').select('id, name').in('id', tenantIds)
-            : Promise.resolve({ data: [], error: null }),
-          propertyIds.length > 0
-            ? supabaseClient.from('properties').select('id, name').in('id', propertyIds)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-
-        // Create maps for quick lookup
-        const tenantMap = new Map((tenantsResult.data || []).map((t: any) => [t.id, t.name]));
-        const propertyMap = new Map((propertiesResult.data || []).map((p: any) => [p.id, p.name]));
-
-        // Transform the data
+        // Transform the data (tenant_name is already in the work_orders table)
         const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
           id: order.id,
           title: order.title || order.description || 'Untitled',
           description: order.description,
           priority: order.priority as 'Low' | 'Medium' | 'High' | null,
           status: order.status,
-          property_name: order.property_id ? (propertyMap.get(order.property_id) || 'N/A') : 'N/A',
-          tenant_name: order.tenant_id ? (tenantMap.get(order.tenant_id) || 'N/A') : 'N/A',
+          tenant_name: order.tenant_name || 'N/A',
         }));
 
         setWorkOrders(transformedData);
