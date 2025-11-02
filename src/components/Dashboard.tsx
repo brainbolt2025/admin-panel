@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, Search, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus } from 'lucide-react';
+import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 
 interface WorkOrder {
@@ -10,6 +10,13 @@ interface WorkOrder {
   status: string | null;
   property_name?: string;
   tenant_name?: string;
+}
+
+interface User {
+  id: string;
+  name: string | null;
+  role: string | null;
+  approved?: boolean;
 }
 
 const Dashboard = () => {
@@ -104,6 +111,11 @@ const Dashboard = () => {
   const [loadingWorkOrders, setLoadingWorkOrders] = useState(false);
   const [errorWorkOrders, setErrorWorkOrders] = useState<string | null>(null);
 
+  // State for users (tenants and technicians)
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [errorUsers, setErrorUsers] = useState<string | null>(null);
+
   // Fetch work orders from database
   useEffect(() => {
     if (!isPM) return; // Only fetch for PM users
@@ -184,6 +196,93 @@ const Dashboard = () => {
     fetchWorkOrders();
   }, [isPM]);
 
+  // Fetch users (tenants and technicians) from the same property as the PM
+  useEffect(() => {
+    if (!isPM) return; // Only fetch for PM users
+
+    const fetchUsers = async () => {
+      setLoadingUsers(true);
+      setErrorUsers(null);
+
+      try {
+        const supabaseClient = getAuthenticatedSupabase();
+        
+        console.log('Fetching PM property and users...');
+        
+        // First, get the PM user's property_id from the users table
+        const accessToken = localStorage.getItem('access_token');
+        let currentUserId: string | null = null;
+        
+        if (accessToken) {
+          // Decode JWT to get user ID
+          try {
+            const payload = JSON.parse(atob(accessToken.split('.')[1]));
+            currentUserId = payload.sub;
+          } catch (e) {
+            console.error('Error decoding token:', e);
+          }
+        }
+
+        if (!currentUserId) {
+          throw new Error('Could not determine current user ID');
+        }
+
+        // Get PM user's property_id
+        const { data: pmUser, error: pmError } = await supabaseClient
+          .from('users')
+          .select('property_id')
+          .eq('id', currentUserId)
+          .single();
+
+        if (pmError) throw pmError;
+        if (!pmUser?.property_id) {
+          console.log('PM user has no property assigned');
+          setUsers([]);
+          return;
+        }
+
+        // Fetch the latest 5 users (tenants and technicians) from the same property
+        const { data: usersData, error: usersError } = await supabaseClient
+          .from('users')
+          .select('id, name, role, approved, property_id')
+          .eq('property_id', pmUser.property_id)
+          .in('role', ['tenant', 'technician'])
+          .order('id', { ascending: false })
+          .limit(5);
+
+        if (usersError) {
+          console.error('Users query error:', usersError);
+          throw usersError;
+        }
+
+        console.log('Users fetched:', usersData);
+
+        if (!usersData || usersData.length === 0) {
+          console.log('No users found for this property');
+          setUsers([]);
+          return;
+        }
+
+        // Transform the data
+        const transformedData: User[] = usersData.map((user: any) => ({
+          id: user.id,
+          name: user.name || 'Unknown',
+          role: user.role,
+          approved: user.approved || false,
+        }));
+
+        setUsers(transformedData);
+      } catch (err: any) {
+        console.error('Error fetching users:', err);
+        setErrorUsers(err.message || 'Failed to load users');
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+
+    fetchUsers();
+  }, [isPM]);
+
   // Helper function to get priority icon
   const getPriorityIcon = (priority: string | null) => {
     switch (priority) {
@@ -212,40 +311,24 @@ const Dashboard = () => {
     }
   };
 
-  // Sample users data (for PM dashboard)
-  const users = [
-    {
-      id: 1,
-      name: 'Sam Carter',
-      role: 'Technician',
-      roleIcon: Wrench,
-      tenant: 'Sarah Johnson',
-      avatar: 'SC',
-    },
-    {
-      id: 2,
-      name: 'Rina Patel',
-      role: 'Tenant',
-      roleIcon: User,
-      tenant: 'Michael Chen',
-      avatar: 'RP',
-    },
-    {
-      id: 3,
-      name: 'John Martinez',
-      role: 'Technician',
-      roleIcon: Wrench,
-      tenant: 'Emily Rodriguez',
-      avatar: 'JM',
-    },
-  ];
+  // Helper function to get role icon
+  const getRoleIcon = (role: string | null) => {
+    switch (role) {
+      case 'technician':
+        return Wrench;
+      case 'tenant':
+        return User;
+      default:
+        return User;
+    }
+  };
 
   return (
     <div className="p-6">
       {/* Welcome Message */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {userName}!
+          Welcome, {userName}!
         </h1>
         <p className="text-gray-600">
           Here's an overview of your management dashboard
@@ -296,30 +379,7 @@ const Dashboard = () => {
           {/* Work Orders Section */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Work Orders</h3>
-            </div>
-            
-            {/* Search and Filters */}
-            <div className="mb-4 space-y-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search"
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
-              <div className="flex gap-2">
-                <select className="flex-1 bg-white border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
-                  <option>Status: All</option>
-                  <option>Pending</option>
-                  <option>In Progress</option>
-                  <option>Resolved</option>
-                </select>
-                <select className="flex-1 bg-white border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
-                  <option>Property: Any</option>
-                </select>
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Recent Work Orders</h3>
             </div>
 
             {/* Work Orders Table */}
@@ -409,49 +469,69 @@ const Dashboard = () => {
           {/* Users Section */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Users</h3>
-              <select className="bg-white border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
-                <option>Role: All</option>
-                <option>Tenant</option>
-                <option>Technician</option>
-              </select>
+              <h3 className="text-lg font-semibold text-gray-900">Recent Users</h3>
             </div>
 
             {/* Users Table */}
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Role</th>
-                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Tenant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => {
-                    const RoleIcon = user.roleIcon;
-                    return (
-                      <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-3 px-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
-                              <span className="text-xs font-semibold text-teal-700">{user.avatar}</span>
+              {loadingUsers ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Loading users...</p>
+                </div>
+              ) : errorUsers ? (
+                <div className="text-center py-8">
+                  <p className="text-red-500">{errorUsers}</p>
+                </div>
+              ) : users.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">No users found</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                      <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Role</th>
+                      <th className="text-left py-3 px-2 text-xs font-semibold text-gray-500 uppercase">Approval</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => {
+                      const RoleIcon = getRoleIcon(user.role);
+                      const initials = user.name
+                        ?.split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .toUpperCase() || 'N/A';
+                      return (
+                        <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-3 px-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
+                                <span className="text-xs font-semibold text-teal-700">{initials}</span>
+                              </div>
+                              <span className="text-sm font-medium text-gray-900">{user.name}</span>
                             </div>
-                            <span className="text-sm font-medium text-gray-900">{user.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
-                            <RoleIcon className="w-3 h-3" />
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-sm text-gray-600">{user.tenant}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                          <td className="py-3 px-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
+                              <RoleIcon className="w-3 h-3" />
+                              {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Unknown'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium ${
+                              user.approved ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {user.approved ? '✓ Approved' : '✗ Not Approved'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

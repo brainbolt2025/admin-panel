@@ -7,6 +7,27 @@ interface TopbarProps {
 }
 
 const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout }: TopbarProps) => {
+  // Get user role from localStorage
+  const getUserRole = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (user.user_metadata?.role) {
+          return user.user_metadata.role;
+        }
+        if (user.raw_user_meta_data?.role) {
+          return user.raw_user_meta_data.role;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+    }
+    return 'super_admin';
+  };
+
+  const userRole = getUserRole();
+  const isPM = userRole === 'pm';
   return (
     <header className="flex items-center justify-between bg-white px-6 py-4 border-b border-gray-200">
       {/* Left side - Mobile menu button and search */}
@@ -24,7 +45,7 @@ const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout }: TopbarProps) => {
           </div>
           <input
             type="text"
-            placeholder="Search PMs, properties…"
+            placeholder={isPM ? "Search tenants, technicians…" : "Search PMs, properties…"}
             className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
           />
         </div>
@@ -41,14 +62,16 @@ const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout }: TopbarProps) => {
           <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
         </div>
 
-        {/* New PM Account Button */}
-        <button 
-          onClick={onNewPMAccount}
-          className="bg-teal-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-teal-700 transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span className="font-medium">New PM Account</span>
-        </button>
+        {/* New PM Account Button - Only show for super admin */}
+        {!isPM && (
+          <button 
+            onClick={onNewPMAccount}
+            className="bg-teal-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-teal-700 transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span className="font-medium">New PM Account</span>
+          </button>
+        )}
 
         {/* Logout Button */}
         <button 

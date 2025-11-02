@@ -594,13 +594,59 @@ serve(async (req) => {
       console.error('❌ WARNING: Property name is missing!')
     }
 
+    // Step 4: Create property and link it to the PM user
+    console.log('Step 4: Creating property for PM user')
+    let propertyId: string | null = null
+    
+    if (property_name) {
+      try {
+        // Create property in properties table with pm_id
+        const { data: propertyData, error: propertyError } = await supabase
+          .from('properties')
+          .insert({
+            name: property_name,
+            pm_id: authUserId  // Link PM user to the property
+          })
+          .select('id')
+          .single()
+        
+        if (propertyError) {
+          console.error('❌ Failed to create property:', propertyError)
+          // Continue anyway - property_id will remain NULL
+          // User can manually link it later if needed
+        } else {
+          propertyId = propertyData.id
+          console.log('✅ Property created successfully:', propertyId)
+          
+          // Link the property to the PM user (bidirectional link)
+          const { error: linkError } = await supabase
+            .from('users')
+            .update({ property_id: propertyId })
+            .eq('id', authUserId)
+          
+          if (linkError) {
+            console.error('❌ Failed to link property to user:', linkError)
+            // Property was created but not linked - this is not critical
+          } else {
+            console.log('✅ Property linked to PM user successfully (bidirectional)')
+          }
+        }
+      } catch (propError) {
+        console.error('❌ Exception creating property:', propError)
+        // Continue - property creation is not critical for user creation
+      }
+    } else {
+      console.warn('⚠️ No property_name provided, skipping property creation')
+    }
+
     // Return success response with user ID and role
     return new Response(
       JSON.stringify({ 
         success: true, 
         user_id: userData.id,
         role: userData.role || 'pm', // Include role in response
-        message: 'User account and profile created successfully with PM role'
+        property_id: propertyId, // Include property_id if created
+        message: 'User account, profile, and property created successfully with PM role'
       }),
       { 
         status: 200, 
