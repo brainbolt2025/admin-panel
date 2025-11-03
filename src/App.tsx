@@ -8,6 +8,7 @@ import InvitePM from './components/InvitePM'
 import Subscription from './components/Subscription'
 import WorkOrders from './components/WorkOrders'
 import Users from './components/Users'
+import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
 import { config } from './config'
 
@@ -18,6 +19,7 @@ function App() {
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
 
   // Check for existing tokens and refresh if needed
   useEffect(() => {
@@ -180,6 +182,11 @@ function App() {
     }
   }
 
+  const handleNavigateToWorkOrder = (workOrderId: string) => {
+    setSelectedWorkOrderId(workOrderId)
+    setActiveItem('Work Orders')
+  }
+
   const renderContent = () => {
     if (showInvitePM) {
       return <InvitePM onBack={handleBackFromInvitePM} />
@@ -191,9 +198,11 @@ function App() {
       case 'PM Accounts':
         return <PropertyManagers />
       case 'Work Orders':
-        return <WorkOrders />
+        return <WorkOrders selectedWorkOrderId={selectedWorkOrderId} onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)} />
       case 'Users':
         return <Users />
+      case 'Technicians':
+        return <Technicians />
       case 'Approvals':
         return <Approvals />
       default:
@@ -237,6 +246,7 @@ function App() {
           onMenuToggle={toggleSidebar} 
           onNewPMAccount={handleNewPMAccount} 
           onLogout={handleLogout}
+          onNavigateToWorkOrder={handleNavigateToWorkOrder}
         />
         <main className="flex-1">
           {renderContent()}

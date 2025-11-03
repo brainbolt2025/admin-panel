@@ -1,4 +1,4 @@
-import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, CheckCircle } from 'lucide-react';
+import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, Wrench } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -45,7 +45,7 @@ const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarPr
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
     { id: 'Work Orders', label: 'Work Orders', icon: ClipboardList },
     { id: 'Users', label: 'Users', icon: Users },
-    { id: 'Approvals', label: 'Approvals', icon: CheckCircle },
+    { id: 'Technicians', label: 'Technicians', icon: Wrench },
   ];
 
   const navigationItems = isPM ? pmNavigationItems : adminNavigationItems;

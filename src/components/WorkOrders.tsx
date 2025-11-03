@@ -20,7 +20,12 @@ interface Technician {
   email: string;
 }
 
-const WorkOrders = () => {
+interface WorkOrdersProps {
+  selectedWorkOrderId?: string | null;
+  onClearSelectedWorkOrder: () => void;
+}
+
+const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrdersProps) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -121,6 +126,18 @@ const WorkOrders = () => {
 
     fetchWorkOrders();
   }, [isPM]);
+
+  // Effect to handle selectedWorkOrderId from Topbar
+  useEffect(() => {
+    if (selectedWorkOrderId && workOrders.length > 0) {
+      const workOrder = workOrders.find(wo => wo.id === selectedWorkOrderId);
+      if (workOrder) {
+        setSearchTerm(workOrder.title || '');
+        // Clear the selected ID after processing
+        onClearSelectedWorkOrder();
+      }
+    }
+  }, [selectedWorkOrderId, workOrders, onClearSelectedWorkOrder]);
 
   // Helper function to get priority icon
   const getPriorityIcon = (priority: string | null) => {
@@ -312,10 +329,6 @@ const WorkOrders = () => {
 
   // Handle reopen button click
   const handleReopenClick = async (workOrder: WorkOrder) => {
-    if (!confirm('Are you sure you want to reopen this work order?')) {
-      return;
-    }
-
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
@@ -358,10 +371,6 @@ const WorkOrders = () => {
 
   // Handle complete button click
   const handleCompleteClick = async (workOrder: WorkOrder) => {
-    if (!confirm('Are you sure you want to mark this work order as completed?')) {
-      return;
-    }
-
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
