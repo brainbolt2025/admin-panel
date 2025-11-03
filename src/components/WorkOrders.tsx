@@ -11,6 +11,7 @@ interface WorkOrder {
   property_name?: string;
   tenant_name?: string;
   property_id?: string;
+  technician_id?: string;
 }
 
 interface Technician {
@@ -60,6 +61,11 @@ const WorkOrders = () => {
   const [selectedTechnician, setSelectedTechnician] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
 
+  // State for view technician dialog
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [assignedTechnician, setAssignedTechnician] = useState<Technician | null>(null);
+  const [loadingAssignedTechnician, setLoadingAssignedTechnician] = useState(false);
+
   // Fetch all work orders from database (not just 3)
   useEffect(() => {
     if (!isPM) return; // Only fetch for PM users
@@ -76,7 +82,7 @@ const WorkOrders = () => {
         // Fetch all work orders (no limit for PM)
         const { data: ordersData, error: ordersError } = await supabaseClient
           .from('work_orders')
-          .select('id, title, description, priority, status, tenant_name, property_id')
+          .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
           .order('id', { ascending: false });
 
         if (ordersError) {
@@ -101,6 +107,7 @@ const WorkOrders = () => {
           status: order.status,
           tenant_name: order.tenant_name || 'N/A',
           property_id: order.property_id,
+          technician_id: order.technician_id,
         }));
 
         setWorkOrders(transformedData);
@@ -203,13 +210,17 @@ const WorkOrders = () => {
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
-      // Update the work order with assigned technician and change status to In Progress
+      // Update the work order with assigned technician
+      // Only change status to In Progress if it's currently Pending (for Assign)
+      // If it's already In Progress (for Reassign), keep the status
+      const updateData: any = { technician_id: selectedTechnician };
+      if (selectedWorkOrder.status === 'Pending') {
+        updateData.status = 'In Progress';
+      }
+      
       const { error } = await supabaseClient
         .from('work_orders')
-        .update({ 
-          technician_id: selectedTechnician,
-          status: 'In Progress'
-        })
+        .update(updateData)
         .eq('id', selectedWorkOrder.id);
 
       if (error) {
@@ -220,7 +231,7 @@ const WorkOrders = () => {
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, property_id')
+        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -233,6 +244,7 @@ const WorkOrders = () => {
         status: order.status,
         tenant_name: order.tenant_name || 'N/A',
         property_id: order.property_id,
+        technician_id: order.technician_id,
       }));
 
       setWorkOrders(transformedData);
@@ -242,8 +254,6 @@ const WorkOrders = () => {
       setSelectedWorkOrder(null);
       setSelectedTechnician(null);
       setTechnicians([]);
-      
-      alert('Work order assigned successfully!');
     } catch (err: any) {
       console.error('Error assigning work order:', err);
       alert('Failed to assign work order. Please try again.');
@@ -258,6 +268,138 @@ const WorkOrders = () => {
     setSelectedWorkOrder(null);
     setSelectedTechnician(null);
     setTechnicians([]);
+  };
+
+  // Handle view technician button click
+  const handleViewClick = async (workOrder: WorkOrder) => {
+    if (!workOrder.technician_id) {
+      alert('No technician assigned to this work order');
+      return;
+    }
+
+    setSelectedWorkOrder(workOrder);
+    setViewDialogOpen(true);
+    setLoadingAssignedTechnician(true);
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      // Fetch technician information
+      const { data, error } = await supabaseClient
+        .from('users')
+        .select('id, name, email')
+        .eq('id', workOrder.technician_id)
+        .single();
+
+      if (error) throw error;
+
+      setAssignedTechnician(data);
+    } catch (err: any) {
+      console.error('Error fetching technician:', err);
+      alert('Failed to load technician information. Please try again.');
+      setViewDialogOpen(false);
+    } finally {
+      setLoadingAssignedTechnician(false);
+    }
+  };
+
+  // Close view technician dialog
+  const handleCloseViewDialog = () => {
+    setViewDialogOpen(false);
+    setSelectedWorkOrder(null);
+    setAssignedTechnician(null);
+  };
+
+  // Handle reopen button click
+  const handleReopenClick = async (workOrder: WorkOrder) => {
+    if (!confirm('Are you sure you want to reopen this work order?')) {
+      return;
+    }
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      // Update the work order status to In Progress
+      const { error } = await supabaseClient
+        .from('work_orders')
+        .update({ status: 'In Progress' })
+        .eq('id', workOrder.id);
+
+      if (error) {
+        console.error('Update error details:', error);
+        throw error;
+      }
+
+      // Refresh work orders list
+      const { data: ordersData, error: ordersError } = await supabaseClient
+        .from('work_orders')
+        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+        .order('id', { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
+        id: order.id,
+        title: order.title || order.description || 'Untitled',
+        description: order.description,
+        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
+        status: order.status,
+        tenant_name: order.tenant_name || 'N/A',
+        property_id: order.property_id,
+        technician_id: order.technician_id,
+      }));
+
+      setWorkOrders(transformedData);
+    } catch (err: any) {
+      console.error('Error reopening work order:', err);
+      alert('Failed to reopen work order. Please try again.');
+    }
+  };
+
+  // Handle complete button click
+  const handleCompleteClick = async (workOrder: WorkOrder) => {
+    if (!confirm('Are you sure you want to mark this work order as completed?')) {
+      return;
+    }
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      // Update the work order status to Completed
+      const { error } = await supabaseClient
+        .from('work_orders')
+        .update({ status: 'Completed' })
+        .eq('id', workOrder.id);
+
+      if (error) {
+        console.error('Update error details:', error);
+        throw error;
+      }
+
+      // Refresh work orders list
+      const { data: ordersData, error: ordersError } = await supabaseClient
+        .from('work_orders')
+        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+        .order('id', { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
+        id: order.id,
+        title: order.title || order.description || 'Untitled',
+        description: order.description,
+        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
+        status: order.status,
+        tenant_name: order.tenant_name || 'N/A',
+        property_id: order.property_id,
+        technician_id: order.technician_id,
+      }));
+
+      setWorkOrders(transformedData);
+    } catch (err: any) {
+      console.error('Error completing work order:', err);
+      alert('Failed to complete work order. Please try again.');
+    }
   };
 
   return (
@@ -376,7 +518,12 @@ const WorkOrders = () => {
                                 <UserPlus className="w-3 h-3" />
                                 Assign
                               </button>
-                              <button className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors">Details</button>
+                              <button 
+                                onClick={() => handleViewClick(order)}
+                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              >
+                                Details
+                              </button>
                             </>
                           )}
                           {order.status === 'In Progress' && (
@@ -388,13 +535,30 @@ const WorkOrders = () => {
                                 <UserPlus className="w-3 h-3" />
                                 Reassign
                               </button>
-                              <button className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors">Details</button>
+                              <button 
+                                onClick={() => handleViewClick(order)}
+                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              >
+                                Details
+                              </button>
+                              <button 
+                                onClick={() => handleCompleteClick(order)}
+                                className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Complete
+                              </button>
                             </>
                           )}
                           {(order.status === 'Completed' || order.status === 'Canceled') && (
                             <>
                               <button className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors">View</button>
-                              <button className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors">Reopen</button>
+                              <button 
+                                onClick={() => handleReopenClick(order)}
+                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              >
+                                Reopen
+                              </button>
                             </>
                           )}
                         </div>
@@ -515,6 +679,80 @@ const WorkOrders = () => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* View Technician Dialog */}
+      {viewDialogOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 p-6">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Technician Information</h2>
+              <button
+                onClick={handleCloseViewDialog}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Work Order Info */}
+            {selectedWorkOrder && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{selectedWorkOrder.title}</p>
+                {selectedWorkOrder.description && (
+                  <p className="text-xs text-gray-600 mt-1">{selectedWorkOrder.description}</p>
+                )}
+              </div>
+            )}
+
+            {/* Loading State */}
+            {loadingAssignedTechnician ? (
+              <div className="py-8 text-center">
+                <div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-gray-500 text-sm">Loading technician information...</p>
+              </div>
+            ) : assignedTechnician ? (
+              <div className="space-y-4">
+                {/* Technician Info Card */}
+                <div className="p-4 border border-gray-200 rounded-lg">
+                  <div className="flex items-center mb-4">
+                    <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mr-4">
+                      <Wrench className="w-8 h-8 text-teal-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-lg font-semibold text-gray-900">{assignedTechnician.name}</p>
+                      <p className="text-sm text-gray-500">Technician</p>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium text-gray-700 w-20">Email:</span>
+                        <span className="text-sm text-gray-900">{assignedTechnician.email}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-500">No technician information available</p>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleCloseViewDialog}
+                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
