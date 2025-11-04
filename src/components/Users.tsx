@@ -11,7 +11,12 @@ interface Tenant {
   created_at?: string;
 }
 
-const Users = () => {
+interface UsersProps {
+  selectedTenantFilter?: string | null;
+  onClearTenantFilter?: () => void;
+}
+
+const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -40,13 +45,27 @@ const Users = () => {
   const [errorTenants, setErrorTenants] = useState<string | null>(null);
 
   // State for search and filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(selectedTenantFilter || '');
   const [statusFilter, setStatusFilter] = useState('All');
 
   // State for confirmation modal
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+
+  // Update search term when selectedTenantFilter prop changes
+  useEffect(() => {
+    if (selectedTenantFilter) {
+      setSearchTerm(selectedTenantFilter);
+      // Clear the filter after it's been applied
+      if (onClearTenantFilter) {
+        // Small delay to ensure the search term is set first
+        setTimeout(() => {
+          onClearTenantFilter();
+        }, 100);
+      }
+    }
+  }, [selectedTenantFilter, onClearTenantFilter]);
 
   // Fetch tenants from database
   useEffect(() => {
@@ -122,17 +141,43 @@ const Users = () => {
   }, [isPM]);
 
   // Filter tenants based on search and filters
-  const filteredTenants = tenants.filter((tenant) => {
-    const matchesSearch = 
-      tenant.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tenant.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'All' || 
-      (statusFilter === 'Approved' && tenant.approved) ||
-      (statusFilter === 'Pending' && !tenant.approved);
+  const filteredTenants = tenants
+    .filter((tenant) => {
+      const matchesSearch = 
+        tenant.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        tenant.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'All' || 
+        (statusFilter === 'Approved' && tenant.approved) ||
+        (statusFilter === 'Pending' && !tenant.approved);
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      // If there's a search term, prioritize exact or close matches
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const aNameMatch = a.name?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+        const bNameMatch = b.name?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+        
+        // Exact start matches first
+        if (aNameMatch !== bNameMatch) {
+          return bNameMatch - aNameMatch;
+        }
+        
+        // Then exact name matches
+        const aExactMatch = a.name?.toLowerCase() === searchLower ? 1 : 0;
+        const bExactMatch = b.name?.toLowerCase() === searchLower ? 1 : 0;
+        if (aExactMatch !== bExactMatch) {
+          return bExactMatch - aExactMatch;
+        }
+      }
+      
+      // Default: sort by created_at descending (newest first)
+      const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bDate - aDate;
+    });
 
   // Handle approve tenant click
   const handleApproveClick = (tenant: Tenant) => {

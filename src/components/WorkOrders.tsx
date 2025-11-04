@@ -127,14 +127,16 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
     fetchWorkOrders();
   }, [isPM]);
 
-  // Effect to handle selectedWorkOrderId from Topbar
+  // Effect to handle selectedWorkOrderId from Dashboard or Topbar
   useEffect(() => {
     if (selectedWorkOrderId && workOrders.length > 0) {
       const workOrder = workOrders.find(wo => wo.id === selectedWorkOrderId);
       if (workOrder) {
         setSearchTerm(workOrder.title || '');
-        // Clear the selected ID after processing
-        onClearSelectedWorkOrder();
+        // Clear the selected ID after a delay to allow sorting to complete
+        setTimeout(() => {
+          onClearSelectedWorkOrder();
+        }, 100);
       }
     }
   }, [selectedWorkOrderId, workOrders, onClearSelectedWorkOrder]);
@@ -170,17 +172,47 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
   };
 
   // Filter work orders based on search and filters
-  const filteredWorkOrders = workOrders.filter((order) => {
-    const matchesSearch = 
-      order.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.tenant_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
-    const matchesPriority = priorityFilter === 'All' || order.priority === priorityFilter;
+  const filteredWorkOrders = workOrders
+    .filter((order) => {
+      const matchesSearch = 
+        order.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.tenant_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
+      const matchesPriority = priorityFilter === 'All' || order.priority === priorityFilter;
 
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+      return matchesSearch && matchesStatus && matchesPriority;
+    })
+    .sort((a, b) => {
+      // If there's a selected work order ID, prioritize it
+      if (selectedWorkOrderId) {
+        if (a.id === selectedWorkOrderId) return -1;
+        if (b.id === selectedWorkOrderId) return 1;
+      }
+      
+      // If there's a search term, prioritize exact or close matches
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const aTitleMatch = a.title?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+        const bTitleMatch = b.title?.toLowerCase().startsWith(searchLower) ? 1 : 0;
+        
+        // Exact start matches first
+        if (aTitleMatch !== bTitleMatch) {
+          return bTitleMatch - aTitleMatch;
+        }
+        
+        // Then exact title matches
+        const aExactMatch = a.title?.toLowerCase() === searchLower ? 1 : 0;
+        const bExactMatch = b.title?.toLowerCase() === searchLower ? 1 : 0;
+        if (aExactMatch !== bExactMatch) {
+          return bExactMatch - aExactMatch;
+        }
+      }
+      
+      // Default: sort by ID descending (newest first)
+      return parseInt(b.id) - parseInt(a.id);
+    });
 
   // Handle assign button click
   const handleAssignClick = async (workOrder: WorkOrder) => {

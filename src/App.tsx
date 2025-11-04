@@ -20,6 +20,7 @@ function App() {
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
+  const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
 
   // Check for existing tokens and refresh if needed
   useEffect(() => {
@@ -187,6 +188,11 @@ function App() {
     setActiveItem('Work Orders')
   }
 
+  const handleNavigateToTenant = (tenantName: string) => {
+    setSelectedTenantFilter(tenantName)
+    setActiveItem('Users')
+  }
+
   const renderContent = () => {
     if (showInvitePM) {
       return <InvitePM onBack={handleBackFromInvitePM} />
@@ -194,19 +200,19 @@ function App() {
 
     switch (activeItem) {
       case 'Dashboard':
-        return <Dashboard />
+        return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
       case 'PM Accounts':
         return <PropertyManagers />
       case 'Work Orders':
         return <WorkOrders selectedWorkOrderId={selectedWorkOrderId} onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)} />
       case 'Users':
-        return <Users />
+        return <Users selectedTenantFilter={selectedTenantFilter} onClearTenantFilter={() => setSelectedTenantFilter(null)} />
       case 'Technicians':
         return <Technicians />
       case 'Approvals':
         return <Approvals />
       default:
-        return <Dashboard />
+        return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
     }
   }
 

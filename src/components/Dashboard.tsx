@@ -19,7 +19,12 @@ interface User {
   approved?: boolean;
 }
 
-const Dashboard = () => {
+interface DashboardProps {
+  onNavigateToTenant?: (tenantName: string) => void;
+  onNavigateToWorkOrder?: (workOrderId: string) => void;
+}
+
+const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps) => {
   // Get user information for personalized welcome message
   const getUserName = () => {
     try {
@@ -394,8 +399,16 @@ const Dashboard = () => {
                       const PriorityIcon = getPriorityIcon(order.priority);
                       const { icon: StatusIcon, color: statusColor } = getStatusInfo(order.status);
                       return (
-                        <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 px-2 text-sm font-medium text-gray-900">{order.title}</td>
+                        <tr 
+                          key={order.id} 
+                          className={`border-b border-gray-100 ${onNavigateToWorkOrder ? 'hover:bg-gray-50 cursor-pointer' : 'hover:bg-gray-50'}`}
+                          onClick={() => {
+                            if (onNavigateToWorkOrder) {
+                              onNavigateToWorkOrder(order.id);
+                            }
+                          }}
+                        >
+                          <td className={`py-3 px-2 text-sm font-medium ${onNavigateToWorkOrder ? 'text-teal-600 hover:text-teal-700 hover:underline' : 'text-gray-900'}`}>{order.title}</td>
                           <td className="py-3 px-2 text-sm text-gray-600">{order.property_name}</td>
                           <td className="py-3 px-2 text-sm text-gray-600">{order.tenant_name}</td>
                           <td className="py-3 px-2">
@@ -484,14 +497,23 @@ const Dashboard = () => {
                         .map((n) => n[0])
                         .join('')
                         .toUpperCase() || 'N/A';
+                      const isTenant = user.role === 'tenant';
                       return (
-                        <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <tr 
+                          key={user.id} 
+                          className={`border-b border-gray-100 ${isTenant && onNavigateToTenant ? 'hover:bg-gray-50 cursor-pointer' : 'hover:bg-gray-50'}`}
+                          onClick={() => {
+                            if (isTenant && onNavigateToTenant && user.name) {
+                              onNavigateToTenant(user.name);
+                            }
+                          }}
+                        >
                           <td className="py-3 px-2">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
                                 <span className="text-xs font-semibold text-teal-700">{initials}</span>
                               </div>
-                              <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                              <span className={`text-sm font-medium ${isTenant && onNavigateToTenant ? 'text-teal-600 hover:text-teal-700 hover:underline' : 'text-gray-900'}`}>{user.name}</span>
                             </div>
                           </td>
                           <td className="py-3 px-2">
