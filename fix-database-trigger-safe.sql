@@ -19,17 +19,17 @@ BEGIN
   -- Try both raw_user_meta_data and user_meta_data
   user_role := COALESCE(
     NEW.raw_user_meta_data->>'role',
-    NEW.user_meta_data->>'role', 
+    NEW.raw_app_meta_data->>'role',
     'tenant'
   );
   user_name := COALESCE(
     NEW.raw_user_meta_data->>'name',
-    NEW.user_meta_data->>'name',
+    NEW.raw_app_meta_data->>'name',
     'Temporary Name'  -- Provide a default value instead of NULL
   );
   user_property_name := COALESCE(
     NEW.raw_user_meta_data->>'property_name',
-    NEW.user_meta_data->>'property_name',
+    NEW.raw_app_meta_data->>'property_name',
     'Temporary Property'  -- Provide a default value instead of NULL
   );
   
@@ -42,7 +42,7 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    user_role,
+    user_role::public.user_role,
     user_name,
     user_property_name
   )
