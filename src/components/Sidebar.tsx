@@ -14,6 +14,9 @@ const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarPr
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
+        if (user.profile?.role) {
+          return user.profile.role;
+        }
         // Check user_metadata first (Supabase auth stores role here)
         if (user.user_metadata?.role) {
           return user.user_metadata.role;

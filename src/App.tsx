@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -11,6 +11,17 @@ import Users from './components/Users'
 import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
 import { config } from './config'
+import { getAuthenticatedSupabase } from './lib/supabase'
+
+interface UserProfile {
+  id: string
+  email: string | null
+  name: string | null
+  role: string | null
+  approved: boolean | null
+  property_id?: string | null
+  property_name?: string | null
+}
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -21,35 +32,7 @@ function App() {
   const [showSubscription, setShowSubscription] = useState(false)
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
-
-  // Check for existing tokens and refresh if needed
-  useEffect(() => {
-    const checkAuth = async () => {
-      const accessToken = localStorage.getItem('access_token')
-      
-      if (accessToken) {
-        // Check if token is still valid
-        const isValid = await checkTokenValidity(accessToken)
-        
-        if (isValid) {
-          setIsLoggedIn(true)
-        } else {
-          // Try to refresh the token
-          const refreshed = await refreshToken()
-          if (refreshed) {
-            setIsLoggedIn(true)
-          } else {
-            // Clear invalid tokens
-            clearTokens()
-          }
-        }
-      }
-      
-      setIsCheckingAuth(false)
-    }
-
-    checkAuth()
-  }, [])
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
 
   // Handle payment success redirect (just log, let Login component handle the UI)
   useEffect(() => {
@@ -67,23 +50,93 @@ function App() {
     }
   }, [])
 
-  const checkTokenValidity = async (token: string): Promise<boolean> => {
+  const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
+    if (!profile) return
+
     try {
-      const response = await fetch(
-        `${config.supabase.url}/auth/v1/user`,
-        {
-          method: 'GET',
-          headers: {
-            'apikey': config.supabase.anonKey,
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      )
-      return response.ok
+      const userStr = localStorage.getItem('user')
+      if (!userStr) return
+
+      const userData = JSON.parse(userStr)
+      const mergedUser = {
+        ...userData,
+        approved: profile.approved,
+        profile,
+      }
+
+      localStorage.setItem('user', JSON.stringify(mergedUser))
     } catch (error) {
-      return false
+      console.error('Failed to sync user profile to localStorage:', error)
     }
-  }
+  }, [])
+
+  const loadUserProfile = useCallback(
+    async (userId: string): Promise<UserProfile | null> => {
+      if (!userId) {
+        return null
+      }
+
+      const supabaseClient = getAuthenticatedSupabase()
+      const { data: profile, error } = await supabaseClient
+        .from('users')
+        .select('id, email, name, role, approved, property_id, property_name')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      if (profile) {
+        setUserProfile(profile)
+        syncLocalStorageUser(profile)
+        return profile
+      }
+
+      setUserProfile(null)
+      return null
+    },
+    [syncLocalStorageUser]
+  )
+
+  // Check for existing tokens and refresh if needed
+  useEffect(() => {
+    const checkAuth = async () => {
+      const accessToken = localStorage.getItem('access_token')
+      const storedUserStr = localStorage.getItem('user')
+
+      if (accessToken && storedUserStr) {
+        try {
+          const storedUser = JSON.parse(storedUserStr)
+          const storedUserId: string | undefined =
+            storedUser?.id ||
+            storedUser?.user?.id ||
+            storedUser?.user_metadata?.id ||
+            storedUser?.profile?.id
+
+          if (storedUserId) {
+            setIsLoggedIn(true)
+            await loadUserProfile(storedUserId)
+            setIsCheckingAuth(false)
+            return
+          }
+        } catch (error) {
+          console.error('Failed to parse stored user data:', error)
+          clearTokens()
+        }
+      }
+
+      if (await refreshToken()) {
+        setIsLoggedIn(true)
+      } else {
+        clearTokens()
+      }
+
+      setIsCheckingAuth(false)
+    }
+
+    checkAuth()
+  }, [loadUserProfile])
 
   const refreshToken = async (): Promise<boolean> => {
     try {
@@ -110,6 +163,17 @@ function App() {
         localStorage.setItem('access_token', data.access_token)
         localStorage.setItem('refresh_token', data.refresh_token)
         localStorage.setItem('user', JSON.stringify(data.user))
+        const nextUserId: string | undefined =
+          data.user?.id ||
+          data.user?.user?.id ||
+          data.user?.user_metadata?.id
+        if (nextUserId) {
+          try {
+            await loadUserProfile(nextUserId)
+          } catch (error) {
+            console.error('Failed to load profile after refresh:', error)
+          }
+        }
         return true
       }
       return false
@@ -122,6 +186,7 @@ function App() {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
+    setUserProfile(null)
   }
 
   const toggleSidebar = () => {
@@ -143,6 +208,25 @@ function App() {
 
   const handleLogin = () => {
     setIsLoggedIn(true)
+    const storedUserStr = localStorage.getItem('user')
+    if (storedUserStr) {
+      try {
+        const storedUser = JSON.parse(storedUserStr)
+        const storedUserId: string | undefined =
+          storedUser?.id ||
+          storedUser?.user?.id ||
+          storedUser?.user_metadata?.id ||
+          storedUser?.profile?.id
+
+        if (storedUserId) {
+          loadUserProfile(storedUserId).catch((error) => {
+            console.error('Failed to load user profile after login:', error)
+          })
+        }
+      } catch (error) {
+        console.error('Failed to parse stored user after login:', error)
+      }
+    }
   }
 
   const handleLogout = async () => {

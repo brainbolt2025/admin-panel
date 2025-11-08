@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
+import { config } from '../config';
 
 interface Tenant {
   id: string;
@@ -23,6 +24,9 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
+        if (user.profile?.role) {
+          return user.profile.role;
+        }
         if (user.user_metadata?.role) {
           return user.user_metadata.role;
         }
@@ -89,7 +93,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
         const { data: pmData, error: pmError } = await supabaseClient
           .from('users')
-          .select('property_id')
+          .select('property_id, property_name')
           .eq('id', userData.user.id)
           .eq('role', 'pm')
           .single();
@@ -220,7 +224,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
       const { data: pmData, error: pmError } = await supabaseClient
         .from('users')
-        .select('property_id')
+        .select('property_id, property_name, name')
         .eq('id', userData.user.id)
         .eq('role', 'pm')
         .single();
@@ -249,6 +253,36 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
       setConfirmModalOpen(false);
       setSelectedTenant(null);
       setConfirmAction(null);
+
+      if (selectedTenant.email) {
+        try {
+          const accessToken = localStorage.getItem('access_token');
+          const response = await fetch(
+            `${config.supabase.url}/functions/v1/notify-tenant-approval`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': accessToken ? `Bearer ${accessToken}` : `Bearer ${config.supabase.anonKey}`,
+                'apikey': config.supabase.anonKey,
+              },
+              body: JSON.stringify({
+                email: selectedTenant.email,
+                name: selectedTenant.name || undefined,
+                propertyName: pmData?.property_name || undefined,
+                approvedBy: pmData?.name || undefined,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Failed to send tenant approval email:', errorData);
+          }
+        } catch (emailError) {
+          console.error('Error calling notify-tenant-approval function:', emailError);
+        }
+      }
     } catch (err: any) {
       console.error('Error approving tenant:', err);
       alert('Failed to approve tenant. Please try again.');
