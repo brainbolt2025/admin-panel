@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
+import { supabase } from '../lib/supabase';
 
 interface LoginProps {
   onLogin: () => void;
@@ -108,50 +109,44 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(
-        `${config.supabase.url}/auth/v1/token?grant_type=password`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': config.supabase.anonKey,
-            'Authorization': `Bearer ${config.supabase.anonKey}`
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password
-          })
-        }
-      );
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Login successful:', data);
-        
-        // Store tokens in localStorage for future use
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('refresh_token', data.refresh_token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        
-        // Navigate to dashboard on success
-        onLogin();
-      } else {
-        const error = await response.json();
+      if (error) {
         console.error('Login failed:', error);
-        
-        // Handle different error types from Supabase
-        if (error.error_code === 'email_not_confirmed') {
+
+        if (error.message?.toLowerCase().includes('email not confirmed')) {
           setErrorMessage('Please check your email and click the confirmation link before signing in.');
-        } else if (error.error_code === 'invalid_credentials') {
+        } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
           setErrorMessage('Invalid email or password. Please try again.');
-        } else if (error.error_code === 'too_many_requests') {
+        } else if (error.message?.toLowerCase().includes('too many requests')) {
           setErrorMessage('Too many login attempts. Please try again later.');
-        } else if (error.msg) {
-          setErrorMessage(error.msg);
         } else {
-          setErrorMessage('Login failed. Please try again.');
+          setErrorMessage(error.message || 'Login failed. Please try again.');
+        }
+        return;
+      }
+
+      const session = data.session;
+      const user = data.user;
+
+      if (session) {
+        localStorage.setItem('access_token', session.access_token);
+        if (session.refresh_token) {
+          localStorage.setItem('refresh_token', session.refresh_token);
         }
       }
+
+      if (user) {
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
+      console.log('Login successful:', { user, session });
+
+      // Navigate to dashboard on success
+      onLogin();
     } catch (error) {
       console.error('Login error:', error);
       setErrorMessage('An error occurred during login. Please try again.');

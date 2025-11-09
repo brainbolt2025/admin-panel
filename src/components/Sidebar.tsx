@@ -1,13 +1,15 @@
+import type { FC } from 'react';
 import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, Wrench } from 'lucide-react';
+import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
-interface SidebarProps {
+export interface SidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   activeItem: string;
   onActiveItemChange: (item: string) => void;
 }
 
-const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarProps) => {
+const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemChange }) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -34,6 +36,7 @@ const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarPr
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
+  const { pendingCount } = usePendingWorkOrders();
 
   // Navigation items for Super Admin
   const adminNavigationItems = [
@@ -103,15 +106,25 @@ const Sidebar = ({ isOpen, onToggle, activeItem, onActiveItemChange }: SidebarPr
                     <div
                       onClick={() => onActiveItemChange(item.id)}
                       className={`
-                        w-full flex items-center space-x-3 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium
+                        w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium
                         ${activeItem === item.id
                           ? 'bg-teal-50 text-teal-700'
                           : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'
                         }
                       `}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span>{item.label}</span>
+                      <span className="flex items-center gap-3">
+                        <Icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </span>
+                      {item.id === 'Work Orders' && isPM && pendingCount > 0 && (
+                        <span className="ml-3 inline-flex items-center justify-center">
+                          <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                          <span className="sr-only">
+                            {pendingCount} pending work order{pendingCount === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                      )}
                     </div>
                   </li>
                 );

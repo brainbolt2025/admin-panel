@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -10,8 +10,8 @@ import WorkOrders from './components/WorkOrders'
 import Users from './components/Users'
 import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
-import { config } from './config'
-import { getAuthenticatedSupabase } from './lib/supabase'
+import { getAuthenticatedSupabase, supabase } from './lib/supabase'
+import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 
 interface UserProfile {
   id: string
@@ -33,6 +33,7 @@ function App() {
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
 
   // Handle payment success redirect (just log, let Login component handle the UI)
   useEffect(() => {
@@ -99,95 +100,120 @@ function App() {
     [syncLocalStorageUser]
   )
 
-  // Check for existing tokens and refresh if needed
-  useEffect(() => {
-    const checkAuth = async () => {
-      const accessToken = localStorage.getItem('access_token')
-      const storedUserStr = localStorage.getItem('user')
-
-      if (accessToken && storedUserStr) {
-        try {
-          const storedUser = JSON.parse(storedUserStr)
-          const storedUserId: string | undefined =
-            storedUser?.id ||
-            storedUser?.user?.id ||
-            storedUser?.user_metadata?.id ||
-            storedUser?.profile?.id
-
-          if (storedUserId) {
-            setIsLoggedIn(true)
-            await loadUserProfile(storedUserId)
-            setIsCheckingAuth(false)
-            return
-          }
-        } catch (error) {
-          console.error('Failed to parse stored user data:', error)
-          clearTokens()
-        }
-      }
-
-      if (await refreshToken()) {
-        setIsLoggedIn(true)
-      } else {
-        clearTokens()
-      }
-
-      setIsCheckingAuth(false)
-    }
-
-    checkAuth()
-  }, [loadUserProfile])
-
-  const refreshToken = async (): Promise<boolean> => {
-    try {
-      const refreshToken = localStorage.getItem('refresh_token')
-      if (!refreshToken) return false
-
-      const response = await fetch(
-        `${config.supabase.url}/auth/v1/token?grant_type=refresh_token`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': config.supabase.anonKey,
-            'Authorization': `Bearer ${config.supabase.anonKey}`
-          },
-          body: JSON.stringify({
-            refresh_token: refreshToken
-          })
-        }
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem('access_token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
-        localStorage.setItem('user', JSON.stringify(data.user))
-        const nextUserId: string | undefined =
-          data.user?.id ||
-          data.user?.user?.id ||
-          data.user?.user_metadata?.id
-        if (nextUserId) {
-          try {
-            await loadUserProfile(nextUserId)
-          } catch (error) {
-            console.error('Failed to load profile after refresh:', error)
-          }
-        }
-        return true
-      }
-      return false
-    } catch (error) {
-      return false
-    }
-  }
-
-  const clearTokens = () => {
+  const clearStoredSession = useCallback(() => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     setUserProfile(null)
-  }
+  }, [])
+
+  const fetchPendingWorkOrdersCount = useCallback(async () => {
+    if (!userProfile || userProfile.role !== 'pm') {
+      setPendingWorkOrdersCount(0)
+      return
+    }
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase()
+      let query = supabaseClient
+        .from('work_orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'Pending')
+
+      if (userProfile.property_id) {
+        query = query.eq('property_id', userProfile.property_id)
+      }
+
+      const { count, error } = await query
+
+      if (error) {
+        throw error
+      }
+
+      setPendingWorkOrdersCount(count ?? 0)
+    } catch (error) {
+      console.error('Failed to fetch pending work orders count:', error)
+    }
+  }, [userProfile])
+
+  // Keep tokens in sync with Supabase session changes and refresh automatically
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        localStorage.setItem('access_token', session.access_token)
+        if (session.refresh_token) {
+          localStorage.setItem('refresh_token', session.refresh_token)
+        }
+        localStorage.setItem('user', JSON.stringify(session.user))
+        setIsLoggedIn(true)
+        loadUserProfile(session.user.id).catch((error) => {
+          console.error('Failed to load user profile after auth change:', error)
+        })
+      } else {
+        clearStoredSession()
+        setIsLoggedIn(false)
+      }
+
+      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        setIsCheckingAuth(false)
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [loadUserProfile, clearStoredSession])
+
+  // Initialize auth state on first load
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (session) {
+          setIsLoggedIn(true)
+          await loadUserProfile(session.user.id)
+        } else {
+          // Fall back to legacy stored tokens if available
+          const storedAccessToken = localStorage.getItem('access_token')
+          const storedRefreshToken = localStorage.getItem('refresh_token')
+
+          if (storedAccessToken && storedRefreshToken) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: storedAccessToken,
+              refresh_token: storedRefreshToken,
+            })
+
+            if (!error && data.session) {
+              setIsLoggedIn(true)
+              await loadUserProfile(data.session.user.id)
+              setIsCheckingAuth(false)
+              return
+            }
+          }
+
+          clearStoredSession()
+          setIsLoggedIn(false)
+        }
+      } catch (error) {
+        console.error('Failed to initialize auth session:', error)
+        clearStoredSession()
+        setIsLoggedIn(false)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+
+    initializeAuth()
+  }, [loadUserProfile, clearStoredSession])
+
+  useEffect(() => {
+    fetchPendingWorkOrdersCount()
+  }, [fetchPendingWorkOrdersCount])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -207,65 +233,46 @@ function App() {
   }
 
   const handleLogin = () => {
-    setIsLoggedIn(true)
-    const storedUserStr = localStorage.getItem('user')
-    if (storedUserStr) {
-      try {
-        const storedUser = JSON.parse(storedUserStr)
-        const storedUserId: string | undefined =
-          storedUser?.id ||
-          storedUser?.user?.id ||
-          storedUser?.user_metadata?.id ||
-          storedUser?.profile?.id
-
-        if (storedUserId) {
-          loadUserProfile(storedUserId).catch((error) => {
-            console.error('Failed to load user profile after login:', error)
-          })
-        }
-      } catch (error) {
-        console.error('Failed to parse stored user after login:', error)
+    supabase.auth.getSession().then(({ data }) => {
+      const session = data.session
+      if (session?.user?.id) {
+        loadUserProfile(session.user.id).catch((error) => {
+          console.error('Failed to load user profile after login:', error)
+        })
       }
-    }
+    })
   }
 
   const handleLogout = async () => {
     try {
-      const accessToken = localStorage.getItem('access_token')
-      
-      if (accessToken) {
-        const response = await fetch(
-          `${config.supabase.url}/auth/v1/logout`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': config.supabase.anonKey,
-              'Authorization': `Bearer ${accessToken}`
-            }
-          }
-        )
-
-        if (response.ok) {
-          // Clear tokens and redirect to login
-          clearTokens()
-          setIsLoggedIn(false)
-        } else {
-          // Even if logout fails, clear tokens and redirect
-          clearTokens()
-          setIsLoggedIn(false)
-        }
-      } else {
-        // No token, just redirect to login
-        setIsLoggedIn(false)
-      }
+      await supabase.auth.signOut()
+      clearStoredSession()
+      setIsLoggedIn(false)
     } catch (error) {
       console.error('Logout error:', error)
       // Clear tokens and redirect even on error
-      clearTokens()
+      clearStoredSession()
       setIsLoggedIn(false)
     }
   }
+
+const handlePendingCountChange = useCallback(
+  (count: number) => {
+    if (userProfile?.role === 'pm') {
+      setPendingWorkOrdersCount(count)
+    }
+  },
+  [userProfile],
+)
+
+const pendingWorkOrdersContextValue = useMemo(
+  () => ({
+    pendingCount: pendingWorkOrdersCount,
+    setPendingCount: handlePendingCountChange,
+    refreshPendingCount: fetchPendingWorkOrdersCount,
+  }),
+  [pendingWorkOrdersCount, handlePendingCountChange, fetchPendingWorkOrdersCount],
+)
 
   const handleNavigateToWorkOrder = (workOrderId: string) => {
     setSelectedWorkOrderId(workOrderId)
@@ -323,26 +330,28 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        onToggle={toggleSidebar} 
-        activeItem={activeItem}
-        onActiveItemChange={setActiveItem}
-      />
-      
-      <div className="flex-1 flex flex-col">
-        <Topbar 
-          onMenuToggle={toggleSidebar} 
-          onNewPMAccount={handleNewPMAccount} 
-          onLogout={handleLogout}
-          onNavigateToWorkOrder={handleNavigateToWorkOrder}
+    <PendingWorkOrdersProvider value={pendingWorkOrdersContextValue}>
+      <div className="min-h-screen bg-gray-100 flex">
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onToggle={toggleSidebar} 
+          activeItem={activeItem}
+          onActiveItemChange={setActiveItem}
         />
-        <main className="flex-1">
-          {renderContent()}
-        </main>
+        
+        <div className="flex-1 flex flex-col">
+          <Topbar 
+            onMenuToggle={toggleSidebar} 
+            onNewPMAccount={handleNewPMAccount} 
+            onLogout={handleLogout}
+            onNavigateToWorkOrder={handleNavigateToWorkOrder}
+          />
+          <main className="flex-1">
+            {renderContent()}
+          </main>
+        </div>
       </div>
-    </div>
+    </PendingWorkOrdersProvider>
   )
 }
 

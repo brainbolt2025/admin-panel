@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FC } from 'react';
 import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
+import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
 interface WorkOrder {
   id: string;
@@ -10,6 +11,7 @@ interface WorkOrder {
   status: string | null;
   property_name?: string;
   tenant_name?: string;
+  tenant_id?: string;
   property_id?: string;
   technician_id?: string;
 }
@@ -20,12 +22,12 @@ interface Technician {
   email: string;
 }
 
-interface WorkOrdersProps {
+export interface WorkOrdersProps {
   selectedWorkOrderId?: string | null;
   onClearSelectedWorkOrder: () => void;
 }
 
-const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrdersProps) => {
+const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedWorkOrder }) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -71,6 +73,12 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
   const [assignedTechnician, setAssignedTechnician] = useState<Technician | null>(null);
   const [loadingAssignedTechnician, setLoadingAssignedTechnician] = useState(false);
 
+  const { setPendingCount } = usePendingWorkOrders();
+  useEffect(() => {
+    const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
+    setPendingCount(pendingCount);
+  }, [workOrders, setPendingCount]);
+
   // Fetch all work orders from database (not just 3)
   useEffect(() => {
     if (!isPM) return; // Only fetch for PM users
@@ -87,7 +95,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
         // Fetch all work orders (no limit for PM)
         const { data: ordersData, error: ordersError } = await supabaseClient
           .from('work_orders')
-          .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+          .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
           .order('id', { ascending: false });
 
         if (ordersError) {
@@ -111,6 +119,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
           priority: order.priority as 'Low' | 'Medium' | 'High' | null,
           status: order.status,
           tenant_name: order.tenant_name || 'N/A',
+          tenant_id: order.tenant_id,
           property_id: order.property_id,
           technician_id: order.technician_id,
         }));
@@ -280,7 +289,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -292,6 +301,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
         priority: order.priority as 'Low' | 'Medium' | 'High' | null,
         status: order.status,
         tenant_name: order.tenant_name || 'N/A',
+        tenant_id: order.tenant_id,
         property_id: order.property_id,
         technician_id: order.technician_id,
       }));
@@ -378,7 +388,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -390,6 +400,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
         priority: order.priority as 'Low' | 'Medium' | 'High' | null,
         status: order.status,
         tenant_name: order.tenant_name || 'N/A',
+        tenant_id: order.tenant_id,
         property_id: order.property_id,
         technician_id: order.technician_id,
       }));
@@ -420,7 +431,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, property_id, technician_id')
+        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -432,6 +443,7 @@ const WorkOrders = ({ selectedWorkOrderId, onClearSelectedWorkOrder }: WorkOrder
         priority: order.priority as 'Low' | 'Medium' | 'High' | null,
         status: order.status,
         tenant_name: order.tenant_name || 'N/A',
+        tenant_id: order.tenant_id,
         property_id: order.property_id,
         technician_id: order.technician_id,
       }));
