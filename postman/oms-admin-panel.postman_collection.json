@@ -1,0 +1,98 @@
+{
+  "info": {
+    "name": "OMS Admin Panel",
+    "_postman_id": "00000000-0000-0000-0000-000000000000",
+    "description": "Collection of Supabase Edge Function requests for the OMS Admin Panel. Update {{supabase_url}} and {{service_role_key}} variables before sending requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Tenant",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "apikey",
+            "value": "{{service_role_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{service_role_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"tenant@example.com\",\n  \"password\": \"samplePassword123!\",\n  \"name\": \"Sample Tenant\",\n  \"property_id\": \"<property-uuid>\",\n  \"property_name\": \"Sample Property\"\n}"
+        },
+        "url": {
+          "raw": "{{supabase_url}}/functions/v1/create-tenant",
+          "host": [
+            "{{supabase_url}}"
+          ],
+          "path": [
+            "functions",
+            "v1",
+            "create-tenant"
+          ]
+        },
+        "description": "Creates a tenant user using the Supabase service role key. Provide either property_id or property_name."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Technician",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "apikey",
+            "value": "{{service_role_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{service_role_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"technician@example.com\",\n  \"password\": \"samplePassword123!\",\n  \"name\": \"Sample Technician\",\n  \"property_id\": \"<property-uuid>\",\n  \"property_name\": \"Sample Property\"\n}"
+        },
+        "url": {
+          "raw": "{{supabase_url}}/functions/v1/create-technician",
+          "host": [
+            "{{supabase_url}}"
+          ],
+          "path": [
+            "functions",
+            "v1",
+            "create-technician"
+          ]
+        },
+        "description": "Creates a technician user. Provide either property_id or property_name. Technicians default to pending approval."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "supabase_url",
+      "value": "https://YOUR-PROJECT.supabase.co",
+      "type": "string"
+    },
+    {
+      "key": "service_role_key",
+      "value": "YOUR-SERVICE-ROLE-KEY",
+      "type": "string"
+    }
+  ]
+}
+
+

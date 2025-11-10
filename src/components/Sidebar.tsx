@@ -36,7 +36,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
-  const { pendingCount } = usePendingWorkOrders();
+  const { pendingCount, pendingTechniciansCount } = usePendingWorkOrders();
 
   // Navigation items for Super Admin
   const adminNavigationItems = [
@@ -122,6 +122,14 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
                           <span className="sr-only">
                             {pendingCount} pending work order{pendingCount === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                      )}
+                      {item.id === 'Technicians' && isPM && pendingTechniciansCount > 0 && (
+                        <span className="ml-3 inline-flex items-center justify-center">
+                          <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                          <span className="sr-only">
+                            {pendingTechniciansCount} pending technician{pendingTechniciansCount === 1 ? '' : 's'}
                           </span>
                         </span>
                       )}

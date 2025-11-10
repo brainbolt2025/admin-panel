@@ -34,6 +34,7 @@ function App() {
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
+  const [pendingTechniciansCount, setPendingTechniciansCount] = useState(0)
 
   // Handle payment success redirect (just log, let Login component handle the UI)
   useEffect(() => {
@@ -136,6 +137,36 @@ function App() {
     }
   }, [userProfile])
 
+  const fetchPendingTechniciansCount = useCallback(async () => {
+    if (!userProfile || userProfile.role !== 'pm') {
+      setPendingTechniciansCount(0)
+      return
+    }
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase()
+      let query = supabaseClient
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'technician')
+        .eq('approved', false)
+
+      if (userProfile.property_id) {
+        query = query.eq('property_id', userProfile.property_id)
+      }
+
+      const { count, error } = await query
+
+      if (error) {
+        throw error
+      }
+
+      setPendingTechniciansCount(count ?? 0)
+    } catch (error) {
+      console.error('Failed to fetch pending technicians count:', error)
+    }
+  }, [userProfile])
+
   // Keep tokens in sync with Supabase session changes and refresh automatically
   useEffect(() => {
     const {
@@ -213,7 +244,8 @@ function App() {
 
   useEffect(() => {
     fetchPendingWorkOrdersCount()
-  }, [fetchPendingWorkOrdersCount])
+    fetchPendingTechniciansCount()
+  }, [fetchPendingWorkOrdersCount, fetchPendingTechniciansCount])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -265,13 +297,32 @@ const handlePendingCountChange = useCallback(
   [userProfile],
 )
 
+const handlePendingTechniciansCountChange = useCallback(
+  (count: number) => {
+    if (userProfile?.role === 'pm') {
+      setPendingTechniciansCount(count)
+    }
+  },
+  [userProfile],
+)
+
 const pendingWorkOrdersContextValue = useMemo(
   () => ({
     pendingCount: pendingWorkOrdersCount,
+    pendingTechniciansCount,
     setPendingCount: handlePendingCountChange,
+    setPendingTechniciansCount: handlePendingTechniciansCountChange,
     refreshPendingCount: fetchPendingWorkOrdersCount,
+    refreshPendingTechniciansCount: fetchPendingTechniciansCount,
   }),
-  [pendingWorkOrdersCount, handlePendingCountChange, fetchPendingWorkOrdersCount],
+  [
+    pendingWorkOrdersCount,
+    pendingTechniciansCount,
+    handlePendingCountChange,
+    handlePendingTechniciansCountChange,
+    fetchPendingWorkOrdersCount,
+    fetchPendingTechniciansCount,
+  ],
 )
 
   const handleNavigateToWorkOrder = (workOrderId: string) => {

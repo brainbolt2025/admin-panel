@@ -1,5 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
-import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X } from 'lucide-react';
+import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
@@ -21,6 +21,15 @@ interface Technician {
   name: string;
   email: string;
 }
+
+interface WorkOrderMediaFile {
+  name: string;
+  signedUrl: string;
+  size: number | null;
+  createdAt?: string | null;
+}
+
+const WORK_ORDER_MEDIA_BUCKET = 'work-order-media';
 
 export interface WorkOrdersProps {
   selectedWorkOrderId?: string | null;
@@ -72,6 +81,9 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [assignedTechnician, setAssignedTechnician] = useState<Technician | null>(null);
   const [loadingAssignedTechnician, setLoadingAssignedTechnician] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState<WorkOrderMediaFile[]>([]);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   const { setPendingCount } = usePendingWorkOrders();
   useEffect(() => {
@@ -177,6 +189,89 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         return { icon: AlertTriangle, color: 'bg-red-100 text-red-700' };
       default:
         return { icon: Clock, color: 'bg-gray-100 text-gray-700' };
+    }
+  };
+
+  const formatFileSize = (bytes: number | null) => {
+    if (!bytes || Number.isNaN(bytes)) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+
+    return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  };
+
+  const fetchWorkOrderMedia = async (workOrderId: string) => {
+    setLoadingMedia(true);
+    setMediaError(null);
+    setMediaFiles([]);
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+
+      const { data: files, error: listError } = await supabaseClient.storage
+        .from(WORK_ORDER_MEDIA_BUCKET)
+        .list('', {
+          limit: 1000,
+          offset: 0,
+          sortBy: { column: 'created_at', order: 'desc' },
+        });
+
+      if (listError) {
+        throw listError;
+      }
+
+      const relevantFiles = (files || []).filter((file) =>
+        file.name.includes(`workorder_${workOrderId}`)
+      );
+
+      if (relevantFiles.length === 0) {
+        setMediaFiles([]);
+        return;
+      }
+
+      const filesWithUrls = await Promise.all(
+        relevantFiles.map(async (file) => {
+          const { data: signedData, error: signedError } = await supabaseClient.storage
+            .from(WORK_ORDER_MEDIA_BUCKET)
+            .createSignedUrl(file.name, 60 * 60);
+
+          if (signedError || !signedData?.signedUrl) {
+            throw signedError || new Error(`Failed to create signed URL for ${file.name}`);
+          }
+
+          let normalizedSize: number | null = null;
+
+          if (typeof file.metadata?.size === 'number' && Number.isFinite(file.metadata.size)) {
+            normalizedSize = file.metadata.size;
+          } else if (typeof file.metadata?.size === 'string') {
+            const parsed = Number(file.metadata.size);
+            normalizedSize = Number.isFinite(parsed) ? parsed : null;
+          } else if (typeof (file as any).size === 'number' && Number.isFinite((file as any).size)) {
+            normalizedSize = (file as any).size;
+          }
+
+          return {
+            name: file.name,
+            signedUrl: signedData.signedUrl,
+            size: normalizedSize,
+            createdAt: file.created_at ?? null,
+          } as WorkOrderMediaFile;
+        })
+      );
+
+      setMediaFiles(filesWithUrls);
+    } catch (err: any) {
+      console.error('Error fetching work order media:', err);
+      setMediaError(err.message || 'Failed to load work order media');
+      setMediaFiles([]);
+    } finally {
+      setLoadingMedia(false);
     }
   };
 
@@ -331,13 +426,18 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
 
   // Handle view technician button click
   const handleViewClick = async (workOrder: WorkOrder) => {
+    setSelectedWorkOrder(workOrder);
+    setViewDialogOpen(true);
+    setAssignedTechnician(null);
+    setMediaFiles([]);
+    setMediaError(null);
+    fetchWorkOrderMedia(workOrder.id);
+
     if (!workOrder.technician_id) {
-      alert('No technician assigned to this work order');
+      setLoadingAssignedTechnician(false);
       return;
     }
 
-    setSelectedWorkOrder(workOrder);
-    setViewDialogOpen(true);
     setLoadingAssignedTechnician(true);
 
     try {
@@ -367,6 +467,9 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     setViewDialogOpen(false);
     setSelectedWorkOrder(null);
     setAssignedTechnician(null);
+    setMediaFiles([]);
+    setMediaError(null);
+    setLoadingMedia(false);
   };
 
   // Handle reopen button click
@@ -605,7 +708,12 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                           )}
                           {(order.status === 'Completed' || order.status === 'Canceled') && (
                             <>
-                              <button className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors">View</button>
+                              <button
+                                onClick={() => handleViewClick(order)}
+                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                              >
+                                Details
+                              </button>
                               <button 
                                 onClick={() => handleReopenClick(order)}
                                 className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
@@ -794,6 +902,74 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
               <div className="py-8 text-center">
                 <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-500">No technician information available</p>
+              </div>
+            )}
+
+            {selectedWorkOrder && (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Work Order Media</h3>
+                {loadingMedia ? (
+                  <div className="py-6 text-center">
+                    <div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p className="text-gray-500 text-sm">Loading media files...</p>
+                  </div>
+                ) : mediaError ? (
+                  <div className="py-4 px-4 bg-red-50 text-red-600 text-sm rounded-lg">
+                    {mediaError}
+                  </div>
+                ) : mediaFiles.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No media files found for this work order.
+                  </p>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-3">Preview</th>
+                          <th className="px-4 py-3">File Name</th>
+                          <th className="px-4 py-3">Size</th>
+                          <th className="px-4 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 bg-white">
+                        {mediaFiles.map((file) => (
+                          <tr key={file.name} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div className="h-16 w-16 rounded-md border border-gray-200 overflow-hidden bg-gray-100">
+                                <img
+                                  src={file.signedUrl}
+                                  alt={file.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="text-sm font-medium text-gray-900 break-all">{file.name}</p>
+                              {file.createdAt && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Added on {new Date(file.createdAt).toLocaleString()}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{formatFileSize(file.size)}</td>
+                            <td className="px-4 py-3">
+                              <a
+                                href={file.signedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700 hover:underline"
+                              >
+                                View
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
