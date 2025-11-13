@@ -71,16 +71,23 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
 
+  const [adminStats, setAdminStats] = useState({
+    activePMs: 0,
+    assignedProperties: 0,
+    loading: true,
+    error: null as string | null,
+  });
+
   // Overview cards for Super Admin
   const adminOverviewCards = [
     {
       title: 'Active PMs',
-      value: '24',
+      value: adminStats.loading ? '—' : adminStats.activePMs.toString(),
       subtitle: 'Across all regions',
     },
     {
       title: 'Assigned Properties',
-      value: '156',
+      value: adminStats.loading ? '—' : adminStats.assignedProperties.toString(),
       subtitle: 'Managed portfolio',
     },
     {
@@ -89,6 +96,48 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       subtitle: 'Awaiting acceptance',
     },
   ];
+  useEffect(() => {
+    if (isPM) return;
+
+    const fetchAdminStats = async () => {
+      setAdminStats((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const supabaseClient = getAuthenticatedSupabase();
+
+        const [{ count: pmCount, error: pmError }, { count: propertyCount, error: propertyError }] =
+          await Promise.all([
+            supabaseClient
+              .from('users')
+              .select('id', { count: 'exact', head: true })
+              .eq('role', 'pm'),
+            supabaseClient
+              .from('properties')
+              .select('id', { count: 'exact', head: true }),
+          ]);
+
+        if (pmError) throw pmError;
+        if (propertyError) throw propertyError;
+
+        setAdminStats({
+          activePMs: pmCount ?? 0,
+          assignedProperties: propertyCount ?? 0,
+          loading: false,
+          error: null,
+        });
+      } catch (error: any) {
+        console.error('Error fetching admin overview stats:', error);
+        setAdminStats((prev) => ({
+          ...prev,
+          loading: false,
+          error: error?.message || 'Failed to fetch overview stats',
+        }));
+      }
+    };
+
+    fetchAdminStats();
+  }, [isPM]);
+
 
   // Overview cards for PM (work orders stats)
   const pmOverviewCards = [
