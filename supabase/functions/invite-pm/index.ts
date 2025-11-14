@@ -4,6 +4,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 }
 
 interface InviteRequest {
@@ -91,31 +93,84 @@ serve(async (req) => {
       )
     }
 
-    // Create user via Admin API
-    const inviteResponse = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-        },
-        body: JSON.stringify({
-          email,
-          user_metadata: { name, role },
-          email_confirm: false
-        })
-      }
-    )
+    const siteUrl = Deno.env.get('SITE_URL') ?? 'https://admin.asine.app'
+    const isLocal = siteUrl.includes('localhost')
+    const subscribeBaseUrl = isLocal ? 'http://localhost:5173' : 'https://admin.asine.app'
+    const subscribeLink = `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`
 
-    const inviteData = await inviteResponse.json()
+    const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || ''
+    const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
+    const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
 
-    if (!inviteResponse.ok) {
-      console.error('Invite failed:', inviteData)
+    if (!MAILGUN_DOMAIN || !MAILGUN_API_KEY) {
+      console.error('Missing Mailgun configuration')
       return new Response(
-        JSON.stringify({ code: inviteResponse.status, message: inviteData.error_description || 'Failed to create user' }),
-        { status: inviteResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ code: 500, message: 'Mailgun configuration missing' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (MAILGUN_API_KEY.startsWith('pubkey-')) {
+      console.error('MAILGUN_API_KEY must be a private key')
+      return new Response(
+        JSON.stringify({ code: 500, message: 'MAILGUN_API_KEY must be a private API key (starts with "key-")' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const htmlBody = `
+      <html>
+        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
+          <p>Hi ${name},</p>
+          <p>You’ve been invited to manage your properties with <strong>Asine</strong>.</p>
+          <p>Click the button below to activate your account and start your subscription.</p>
+          <p style="margin: 24px 0;">
+            <a href="${subscribeLink}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 9999px; text-decoration: none; font-weight: bold;">
+              Activate &amp; Choose Plan
+            </a>
+          </p>
+          <p>The setup takes less than 2 minutes — once you subscribe, you’ll gain full access to your dashboard.</p>
+          <p style="margin-top: 32px;">Welcome aboard,<br/>The Asine Team</p>
+        </body>
+      </html>
+    `
+
+    const textBody = `Hi ${name},
+
+You’ve been invited to manage your properties with Asine.
+Activate your account and choose your plan:
+${subscribeLink}
+
+The setup takes less than 2 minutes — once you subscribe, you’ll gain full access to your dashboard.
+
+The Asine Team`
+
+    const mailgunBaseUrl =
+      MAILGUN_REGION === 'eu' ? 'https://api.eu.mailgun.net/v3' : 'https://api.mailgun.net/v3'
+    const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
+    const mailgunAuthHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
+
+    const formData = new FormData()
+    formData.append('from', `Asine Invitations <noreply@${MAILGUN_DOMAIN}>`)
+    formData.append('to', email)
+    formData.append('subject', 'Activate your Asine account')
+    formData.append('html', htmlBody)
+    formData.append('text', textBody)
+
+    const mailgunResponse = await fetch(mailgunUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: mailgunAuthHeader,
+      },
+      body: formData,
+    })
+
+    if (!mailgunResponse.ok) {
+      const mailgunResult = await mailgunResponse.json().catch(() => ({}))
+      console.error('Mailgun error sending invite email:', mailgunResult)
+      return new Response(
+        JSON.stringify({ code: mailgunResponse.status, message: 'Failed to send invitation email' }),
+        { status: mailgunResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -123,10 +178,10 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: {
-          id: inviteData.id,
-          email: inviteData.email,
-          name: inviteData.user_metadata?.name,
-          role: inviteData.user_metadata?.role
+          email,
+          name,
+          role,
+          activation_link: subscribeLink,
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

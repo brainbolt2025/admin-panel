@@ -1,23 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, Check, CreditCard, ArrowRight } from 'lucide-react';
 import { config } from '../config';
 
 interface SubscriptionProps {
   onSuccess?: () => void;
+  initialName?: string;
+  initialEmail?: string;
+  initialPropertyName?: string;
 }
 
-const Subscription = ({ onSuccess }: SubscriptionProps) => {
+const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialPropertyName = '' }: SubscriptionProps) => {
   const [step, setStep] = useState<'pricing' | 'form' | 'success'>('pricing');
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: initialName,
+    email: initialEmail,
     password: '',
-    propertyName: ''
+    propertyName: initialPropertyName
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      name: initialName || prev.name,
+      email: initialEmail || prev.email,
+      propertyName: initialPropertyName || prev.propertyName
+    }));
+  }, [initialName, initialEmail, initialPropertyName]);
 
   const plans = [
     {

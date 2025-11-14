@@ -30,6 +30,31 @@ function App() {
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
+  const [subscriptionPrefill, setSubscriptionPrefill] = useState({
+    name: '',
+    email: '',
+    propertyName: '',
+  })
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (url.pathname.includes('/subscribe')) {
+        setSubscriptionPrefill({
+          name: url.searchParams.get('name') ?? '',
+          email: url.searchParams.get('email') ?? '',
+          propertyName: url.searchParams.get('property') ?? '',
+        })
+        setShowSubscription(true)
+
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', `${url.origin}${url.pathname}`)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse URL for subscription prefill:', error)
+    }
+  }, [])
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -372,12 +397,31 @@ const pendingWorkOrdersContextValue = useMemo(
 
   // Show subscription page (no authentication required)
   if (showSubscription) {
-    return <Subscription onSuccess={handleSubscriptionSuccess} />
+    return (
+      <Subscription
+        onSuccess={handleSubscriptionSuccess}
+        initialName={subscriptionPrefill.name}
+        initialEmail={subscriptionPrefill.email}
+        initialPropertyName={subscriptionPrefill.propertyName}
+      />
+    )
   }
 
   // Show login screen if not logged in
   if (!isLoggedIn) {
-    return <Login onLogin={handleLogin} onShowSubscription={() => setShowSubscription(true)} />
+    return (
+      <Login
+        onLogin={handleLogin}
+        onShowSubscription={() => {
+          setSubscriptionPrefill({
+            name: '',
+            email: '',
+            propertyName: '',
+          })
+          setShowSubscription(true)
+        }}
+      />
+    )
   }
 
   return (

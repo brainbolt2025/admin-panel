@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, ChevronDown, ArrowUp, Check, Clock, Minus } from 'lucide-react';
 import InvitePM from './InvitePM';
+import { getAuthenticatedSupabase } from '../lib/supabase';
 
 interface PropertyManager {
   id: string;
@@ -17,41 +18,103 @@ const PropertyManagers = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [regionFilter, setRegionFilter] = useState('Any');
   const [showInvitePM, setShowInvitePM] = useState(false);
+  const [propertyManagers, setPropertyManagers] = useState<PropertyManager[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleBulkInviteClick = () => {
     setShowInvitePM(true);
   };
 
-  // Mock data based on the image
-  const propertyManagers: PropertyManager[] = [
-    {
-      id: '1',
-      name: 'Alex Morgan',
-      email: 'alex.morgan@pmcorp.com',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face',
-      assignedProperties: ['Maple Residences', 'Riverside North', 'City Center'],
-      region: 'East',
-      status: 'Active'
-    },
-    {
-      id: '2',
-      name: 'Sam Carter',
-      email: 'sam.carter@pmcorp.com',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=40&h=40&fit=crop&crop=face',
-      assignedProperties: ['Harbor View', 'Lakeside Oaks'],
-      region: 'West',
-      status: 'Invite Sent'
-    },
-    {
-      id: '3',
-      name: 'Diego Ramos',
-      email: 'diego.ramos@pmcorp.com',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=40&h=40&fit=crop&crop=face',
-      assignedProperties: ['City Center', 'Midtown Plaza', 'Park Lane'],
-      region: 'Central',
-      status: 'Deactivated'
-    }
-  ];
+  useEffect(() => {
+    const fetchPropertyManagers = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const supabaseClient = getAuthenticatedSupabase();
+
+        const { data: pmData, error: pmError } = await supabaseClient
+          .from('users')
+          .select('id, name, email, approved, property_name')
+          .eq('role', 'pm')
+          .order('created_at', { ascending: false });
+
+        if (pmError) {
+          throw pmError;
+        }
+
+        let propertiesData: Array<{ id: string; name: string | null; pm_id: string | null; region?: string | null }> =
+          [];
+
+        const { data: propsData, error: propsError } = await supabaseClient
+          .from('properties')
+          .select('id, name, pm_id, region');
+
+        if (propsError) {
+          console.warn('Failed to fetch properties for PMs:', propsError);
+        } else if (propsData) {
+          propertiesData = propsData;
+        }
+
+        const propertyMap = propertiesData.reduce(
+          (acc, property) => {
+            if (!property.pm_id) return acc;
+            if (!acc[property.pm_id]) {
+              acc[property.pm_id] = [];
+            }
+            acc[property.pm_id].push({
+              name: property.name ?? 'Unnamed Property',
+              region: property.region ?? 'Unassigned',
+            });
+            return acc;
+          },
+          {} as Record<string, Array<{ name: string; region: string }>>,
+        );
+
+        const transformed: PropertyManager[] =
+          pmData?.map((pm: any) => {
+            const assignedProps = propertyMap[pm.id] ?? [];
+            const assignedProperties =
+              assignedProps.length > 0
+                ? assignedProps.map((property) => property.name)
+                : pm.property_name
+                ? [pm.property_name]
+                : [];
+
+            const region =
+              assignedProps.find((property) => property.region && property.region !== 'Unassigned')?.region ??
+              (assignedProps[0]?.region ?? 'Unassigned');
+
+            const status =
+              pm.approved === true ? 'Active' : pm.approved === false ? 'Deactivated' : 'Invite Sent';
+
+            const avatarSource =
+              pm.avatar_url ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(pm.name || pm.email || 'PM')}&background=0f766e&color=ffffff`;
+
+            return {
+              id: pm.id,
+              name: pm.name || 'Unnamed Property Manager',
+              email: pm.email || 'N/A',
+              avatar: avatarSource,
+              assignedProperties,
+              region,
+              status,
+            } as PropertyManager;
+          }) ?? [];
+
+        setPropertyManagers(transformed);
+      } catch (fetchError: any) {
+        console.error('Error fetching property managers:', fetchError);
+        setError(fetchError?.message || 'Failed to load property managers.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPropertyManagers();
+  }, []);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -79,12 +142,30 @@ const PropertyManagers = () => {
     }
   };
 
-  const filteredManagers = propertyManagers.filter(manager => {
-    const matchesSearch = manager.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         manager.email.toLowerCase().includes(searchTerm.toLowerCase());
+  const regionOptions = useMemo(() => {
+    const uniqueRegions = new Set<string>();
+    propertyManagers.forEach((manager) => {
+      if (manager.region && manager.region !== 'Unassigned') {
+        uniqueRegions.add(manager.region);
+      }
+    });
+
+    const options = ['Any'];
+    options.push(...Array.from(uniqueRegions));
+    if (!uniqueRegions.size) {
+      options.push('Unassigned');
+    }
+    return options;
+  }, [propertyManagers]);
+
+  const filteredManagers = propertyManagers.filter((manager) => {
+    const matchesSearch =
+      manager.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      manager.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || manager.status === statusFilter;
-    const matchesRegion = regionFilter === 'Any' || manager.region === regionFilter;
-    
+    const matchesRegion =
+      regionFilter === 'Any' || manager.region === regionFilter || (regionFilter === 'Unassigned' && manager.region === 'Unassigned');
+
     return matchesSearch && matchesStatus && matchesRegion;
   });
 
@@ -134,10 +215,11 @@ const PropertyManagers = () => {
               onChange={(e) => setRegionFilter(e.target.value)}
               className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
             >
-              <option value="Any">Region: Any</option>
-              <option value="East">East</option>
-              <option value="West">West</option>
-              <option value="Central">Central</option>
+              {regionOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'Any' ? 'Region: Any' : option}
+                </option>
+              ))}
             </select>
             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
@@ -156,6 +238,13 @@ const PropertyManagers = () => {
       {/* Property Managers Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
+          {loading ? (
+            <div className="py-12 text-center text-gray-500">Loading property managers...</div>
+          ) : error ? (
+            <div className="py-12 text-center text-red-500">{error}</div>
+          ) : filteredManagers.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">No property managers found.</div>
+          ) : (
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
@@ -187,9 +276,13 @@ const PropertyManagers = () => {
                   {/* Assigned Properties Column */}
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">
-                      {manager.assignedProperties.map((property, index) => (
-                        <div key={index}>{property}</div>
-                      ))}
+                      {manager.assignedProperties.length > 0 ? (
+                        manager.assignedProperties.map((property, index) => (
+                          <div key={index}>{property}</div>
+                        ))
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </div>
                   </td>
 
@@ -254,6 +347,7 @@ const PropertyManagers = () => {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </div>

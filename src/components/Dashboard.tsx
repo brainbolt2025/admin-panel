@@ -67,9 +67,28 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     return 'super_admin';
   };
 
+  const getUserPropertyId = () => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return (
+          user.profile?.property_id ||
+          user.user_metadata?.property_id ||
+          user.raw_user_meta_data?.property_id ||
+          null
+        );
+      }
+    } catch (error) {
+      console.error('Error parsing user data for property_id:', error);
+    }
+    return null;
+  };
+
   const userName = getUserName();
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
+  const [pmPropertyId, setPmPropertyId] = useState<string | null>(() => getUserPropertyId());
 
   const [adminStats, setAdminStats] = useState({
     activePMs: 0,
@@ -136,24 +155,32 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     };
 
     fetchAdminStats();
-  }, [isPM]);
+  }, [isPM, pmPropertyId]);
 
 
   // Overview cards for PM (work orders stats)
+  const [pmStats, setPmStats] = useState({
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    loading: true,
+    error: null as string | null,
+  });
+
   const pmOverviewCards = [
     {
       title: 'Pending',
-      value: '18',
+      value: pmStats.loading ? '—' : pmStats.pending.toString(),
       subtitle: 'Awaiting assignment',
     },
     {
       title: 'In Progress',
-      value: '27',
+      value: pmStats.loading ? '—' : pmStats.inProgress.toString(),
       subtitle: 'Technician working',
     },
     {
-      title: 'Resolved',
-      value: '142',
+      title: 'Completed',
+      value: pmStats.loading ? '—' : pmStats.completed.toString(),
       subtitle: 'Last 30 days',
     },
   ];
@@ -177,6 +204,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     const fetchWorkOrders = async () => {
       setLoadingWorkOrders(true);
       setErrorWorkOrders(null);
+      setPmStats((prev) => ({ ...prev, loading: true, error: null }));
 
       try {
         const supabaseClient = getAuthenticatedSupabase();
@@ -184,11 +212,17 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         console.log('Fetching work orders...');
         
         // Fetch work orders first
-        const { data: ordersData, error: ordersError } = await supabaseClient
+        let ordersQuery = supabaseClient
           .from('work_orders')
           .select('id, title, description, priority, status, tenant_name')
           .order('id', { ascending: false })
           .limit(3);
+
+        if (pmPropertyId) {
+          ordersQuery = ordersQuery.eq('property_id', pmPropertyId);
+        }
+
+        const { data: ordersData, error: ordersError } = await ordersQuery;
 
         if (ordersError) {
           console.error('Work orders query error:', ordersError);
@@ -214,6 +248,38 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         }));
 
         setWorkOrders(transformedData);
+
+        const buildCountQuery = (status: string) => {
+          let query = supabaseClient
+            .from('work_orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', status);
+
+          if (pmPropertyId) {
+            query = query.eq('property_id', pmPropertyId);
+          }
+
+          return query;
+        };
+
+        const [{ count: pendingCount, error: pendingError }, { count: inProgressCount, error: inProgressError }, { count: completedCount, error: completedError }] =
+          await Promise.all([
+            buildCountQuery('Pending'),
+            buildCountQuery('In Progress'),
+            buildCountQuery('Completed'),
+          ]);
+
+        if (pendingError || inProgressError || completedError) {
+          throw pendingError || inProgressError || completedError;
+        }
+
+        setPmStats({
+          pending: pendingCount ?? 0,
+          inProgress: inProgressCount ?? 0,
+          completed: completedCount ?? 0,
+          loading: false,
+          error: null,
+        });
       } catch (err: any) {
         console.error('Error fetching work orders:', err);
         
@@ -223,6 +289,11 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         } else {
           setErrorWorkOrders(err.message || 'Failed to load work orders');
         }
+        setPmStats((prev) => ({
+          ...prev,
+          loading: false,
+          error: err.message || 'Failed to load overview stats',
+        }));
       } finally {
         setLoadingWorkOrders(false);
       }
@@ -272,9 +343,12 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         if (pmError) throw pmError;
         if (!pmUser?.property_id) {
           console.log('PM user has no property assigned');
+          setPmPropertyId(null);
           setUsers([]);
           return;
         }
+
+        setPmPropertyId(pmUser.property_id);
 
         // Fetch the latest 5 users (tenants and technicians) from the same property
         const { data: usersData, error: usersError } = await supabaseClient
@@ -289,8 +363,6 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
           console.error('Users query error:', usersError);
           throw usersError;
         }
-
-        console.log('Users fetched:', usersData);
 
         if (!usersData || usersData.length === 0) {
           console.log('No users found for this property');
@@ -339,7 +411,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         return { icon: Clock, color: 'bg-orange-100 text-orange-700' };
       case 'In Progress':
         return { icon: Sun, color: 'bg-blue-100 text-blue-700' };
-      case 'Resolved':
+      case 'Completed':
         return { icon: CheckCircle, color: 'bg-green-100 text-green-700' };
       default:
         return { icon: Clock, color: 'bg-gray-100 text-gray-700' };
