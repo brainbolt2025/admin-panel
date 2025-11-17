@@ -7,6 +7,8 @@ export interface PendingWorkOrdersContextValue {
   setPendingTechniciansCount: (count: number) => void
   refreshPendingCount: () => Promise<void>
   refreshPendingTechniciansCount: () => Promise<void>
+  refreshWorkOrdersList: (() => Promise<void>) | null
+  setRefreshWorkOrdersList: (fn: (() => Promise<void>) | null) => void
 }
 
 const PendingWorkOrdersContext = createContext<PendingWorkOrdersContextValue | undefined>(undefined)

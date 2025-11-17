@@ -371,7 +371,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Users</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Tenants</h1>
 
       {/* Search and Filters */}
       <div className="mb-6 space-y-4">

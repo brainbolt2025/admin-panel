@@ -1,5 +1,5 @@
-import { useState, useEffect, type FC } from 'react';
-import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useCallback, type FC } from 'react';
+import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
@@ -14,6 +14,8 @@ interface WorkOrder {
   tenant_id?: string;
   property_id?: string;
   technician_id?: string;
+  unit_number?: string | null;
+  created_at?: string | null;
 }
 
 interface Technician {
@@ -85,68 +87,113 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
 
-  const { setPendingCount } = usePendingWorkOrders();
+  const { setPendingCount, setRefreshWorkOrdersList } = usePendingWorkOrders();
   useEffect(() => {
     const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
     setPendingCount(pendingCount);
   }, [workOrders, setPendingCount]);
 
+  // Helper function to transform work orders with tenant names
+  const transformWorkOrders = useCallback((ordersData: any[]): WorkOrder[] => {
+    return ordersData.map((order: any) => {
+      // Get tenant name from joined tenant user or from tenant_name column
+      let tenantName = 'N/A';
+      
+      if (order.tenant?.name) {
+        tenantName = order.tenant.name;
+      } else if (order.tenant_name) {
+        tenantName = order.tenant_name;
+      } else if (order.tenant_id) {
+        tenantName = 'N/A';
+      }
+      
+      // Get unit_number from work order
+      const unitNumber = order.unit_number || 'N/A';
+      
+      return {
+        id: order.id,
+        title: order.title || order.description || 'Untitled',
+        description: order.description,
+        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
+        status: order.status,
+        tenant_name: tenantName,
+        tenant_id: order.tenant_id,
+        property_id: order.property_id,
+        technician_id: order.technician_id,
+        unit_number: unitNumber || null,
+        created_at: order.created_at || null,
+      };
+    });
+  }, []);
+
   // Fetch all work orders from database (not just 3)
-  useEffect(() => {
+  const fetchWorkOrders = useCallback(async () => {
     if (!isPM) return; // Only fetch for PM users
 
-    const fetchWorkOrders = async () => {
-      setLoadingWorkOrders(true);
-      setErrorWorkOrders(null);
+    setLoadingWorkOrders(true);
+    setErrorWorkOrders(null);
 
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-        
-        console.log('Fetching all work orders...');
-        
-        // Fetch all work orders (no limit for PM)
-        const { data: ordersData, error: ordersError } = await supabaseClient
-          .from('work_orders')
-          .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
-          .order('id', { ascending: false });
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      console.log('Fetching all work orders...');
+      
+      // Fetch all work orders with tenant information (no limit for PM)
+      const { data: ordersData, error: ordersError } = await supabaseClient
+        .from('work_orders')
+        .select(`
+          id, 
+          title, 
+          description, 
+          priority, 
+          status, 
+          tenant_name, 
+          tenant_id, 
+          property_id, 
+          technician_id,
+          unit_number,
+          created_at,
+          tenant:users!tenant_id(name)
+        `)
+        .order('id', { ascending: false });
 
-        if (ordersError) {
-          console.error('Work orders query error:', ordersError);
-          throw ordersError;
-        }
-
-        console.log('Work orders fetched:', ordersData);
-
-        if (!ordersData || ordersData.length === 0) {
-          console.log('No work orders found in database');
-          setWorkOrders([]);
-          return;
-        }
-
-        // Transform the data (tenant_name is already in the work_orders table)
-        const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
-          id: order.id,
-          title: order.title || order.description || 'Untitled',
-          description: order.description,
-          priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-          status: order.status,
-          tenant_name: order.tenant_name || 'N/A',
-          tenant_id: order.tenant_id,
-          property_id: order.property_id,
-          technician_id: order.technician_id,
-        }));
-
-        setWorkOrders(transformedData);
-      } catch (err: any) {
-        console.error('Error fetching work orders:', err);
-        setErrorWorkOrders(err.message || 'Failed to load work orders');
-      } finally {
-        setLoadingWorkOrders(false);
+      if (ordersError) {
+        console.error('Work orders query error:', ordersError);
+        throw ordersError;
       }
-    };
 
-    fetchWorkOrders();
-  }, [isPM]);
+      console.log('Work orders fetched:', ordersData);
+
+      if (!ordersData || ordersData.length === 0) {
+        console.log('No work orders found in database');
+        setWorkOrders([]);
+        return;
+      }
+
+      // Transform the data - get tenant name from joined users table or fallback to tenant_name column
+      const transformedData = transformWorkOrders(ordersData);
+
+      setWorkOrders(transformedData);
+    } catch (err: any) {
+      console.error('Error fetching work orders:', err);
+      setErrorWorkOrders(err.message || 'Failed to load work orders');
+    } finally {
+      setLoadingWorkOrders(false);
+    }
+  }, [isPM, transformWorkOrders]);
+
+  // Register refresh function in context and fetch on mount
+  useEffect(() => {
+    if (isPM) {
+      setRefreshWorkOrdersList(() => fetchWorkOrders);
+      fetchWorkOrders();
+    }
+
+    // Cleanup: unregister on unmount
+    return () => {
+      setRefreshWorkOrdersList(null);
+    };
+  }, [isPM, fetchWorkOrders, setRefreshWorkOrdersList]);
 
   // Effect to handle selectedWorkOrderId from Dashboard or Topbar
   useEffect(() => {
@@ -173,6 +220,21 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         return Shield;
       default:
         return AlertTriangle;
+    }
+  };
+
+  // Format date
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch (error) {
+      return 'N/A';
     }
   };
 
@@ -295,6 +357,14 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         if (b.id === selectedWorkOrderId) return 1;
       }
       
+      // Prioritize Pending status first
+      if (a.status === 'Pending' && b.status !== 'Pending') return -1;
+      if (a.status !== 'Pending' && b.status === 'Pending') return 1;
+      if (a.status === 'Pending' && b.status === 'Pending') {
+        // If both are pending, sort by ID descending (newest first)
+        return parseInt(b.id) - parseInt(a.id);
+      }
+      
       // If there's a search term, prioritize exact or close matches
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase();
@@ -384,22 +454,25 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
+        .select(`
+          id, 
+          title, 
+          description, 
+          priority, 
+          status, 
+          tenant_name, 
+          tenant_id, 
+          property_id, 
+          technician_id,
+          unit_number,
+          created_at,
+          tenant:users!tenant_id(name)
+        `)
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
 
-      const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
-        id: order.id,
-        title: order.title || order.description || 'Untitled',
-        description: order.description,
-        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-        status: order.status,
-        tenant_name: order.tenant_name || 'N/A',
-        tenant_id: order.tenant_id,
-        property_id: order.property_id,
-        technician_id: order.technician_id,
-      }));
+      const transformedData = transformWorkOrders(ordersData);
 
       setWorkOrders(transformedData);
 
@@ -491,22 +564,25 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
+        .select(`
+          id, 
+          title, 
+          description, 
+          priority, 
+          status, 
+          tenant_name, 
+          tenant_id, 
+          property_id, 
+          technician_id,
+          unit_number,
+          created_at,
+          tenant:users!tenant_id(name)
+        `)
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
 
-      const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
-        id: order.id,
-        title: order.title || order.description || 'Untitled',
-        description: order.description,
-        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-        status: order.status,
-        tenant_name: order.tenant_name || 'N/A',
-        tenant_id: order.tenant_id,
-        property_id: order.property_id,
-        technician_id: order.technician_id,
-      }));
+      const transformedData = transformWorkOrders(ordersData);
 
       setWorkOrders(transformedData);
     } catch (err: any) {
@@ -534,22 +610,25 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       // Refresh work orders list
       const { data: ordersData, error: ordersError } = await supabaseClient
         .from('work_orders')
-        .select('id, title, description, priority, status, tenant_name, tenant_id, property_id, technician_id')
+        .select(`
+          id, 
+          title, 
+          description, 
+          priority, 
+          status, 
+          tenant_name, 
+          tenant_id, 
+          property_id, 
+          technician_id,
+          unit_number,
+          created_at,
+          tenant:users!tenant_id(name)
+        `)
         .order('id', { ascending: false });
 
       if (ordersError) throw ordersError;
 
-      const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
-        id: order.id,
-        title: order.title || order.description || 'Untitled',
-        description: order.description,
-        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-        status: order.status,
-        tenant_name: order.tenant_name || 'N/A',
-        tenant_id: order.tenant_id,
-        property_id: order.property_id,
-        technician_id: order.technician_id,
-      }));
+      const transformedData = transformWorkOrders(ordersData);
 
       setWorkOrders(transformedData);
     } catch (err: any) {
@@ -563,9 +642,9 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Work Orders</h1>
 
       {/* Search and Filters */}
-      <div className="mb-6 space-y-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-end gap-4">
         {/* Search Bar */}
-        <div className="relative">
+        <div className="relative flex-1 md:max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
@@ -578,7 +657,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
 
         {/* Filters */}
         <div className="flex gap-4">
-          <div className="relative flex-1">
+          <div className="relative w-48">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -593,7 +672,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
 
-          <div className="relative flex-1">
+          <div className="relative w-48">
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
@@ -621,21 +700,29 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
             <p className="text-red-500">{errorWorkOrders}</p>
           </div>
         ) : filteredWorkOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">
+          <div className="text-center py-16">
+            <div className="mb-4">
+              <ClipboardList className="w-16 h-16 text-gray-300 mx-auto" />
+            </div>
+            <p className="text-gray-500 text-lg font-medium mb-1">
               {workOrders.length === 0 ? 'No work orders found' : 'No work orders match your filters'}
             </p>
+            {workOrders.length > 0 && (
+              <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Title</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Tenant</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Priority</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-2/5 min-w-[300px]">Title</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/12 min-w-[80px]">Unit</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/6 min-w-[100px]">Tenant</th>
+                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[100px]">Priority</th>
+                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[120px]">Status</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/4 min-w-[200px]">Actions</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[120px]">Created At</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -643,40 +730,45 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                   const PriorityIcon = getPriorityIcon(order.priority);
                   const { icon: StatusIcon, color: statusColor } = getStatusInfo(order.status);
                   return (
-                    <tr key={order.id} className="hover:bg-gray-50">
-                      <td className="py-4 px-6">
+                    <tr key={order.id} className="hover:bg-gray-50 transition-colors duration-150">
+                      <td className="py-3 px-4 md:px-6">
                         <div className="text-sm font-medium text-gray-900">{order.title}</div>
                         {order.description && (
-                          <div className="text-xs text-gray-500 mt-1">{order.description}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{order.description}</div>
                         )}
                       </td>
-                      <td className="py-4 px-6 text-sm text-gray-600">{order.tenant_name}</td>
-                      <td className="py-4 px-6">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
-                          <PriorityIcon className="w-3 h-3" />
-                          {order.priority || 'N/A'}
-                        </span>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{order.unit_number || 'N/A'}</td>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{order.tenant_name}</td>
+                      <td className="py-3 px-4 md:px-6">
+                        <div className="flex justify-center">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
+                            <PriorityIcon className="w-3 h-3" />
+                            {order.priority || 'N/A'}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium ${statusColor}`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {order.status || 'N/A'}
-                        </span>
+                      <td className="py-3 px-4 md:px-6">
+                        <div className="flex justify-center">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium ${statusColor}`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {order.status || 'N/A'}
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-4 px-6">
-                        <div className="flex gap-2">
+                      <td className="py-3 px-4 md:px-6">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {order.status === 'Pending' && (
                             <>
                               <button 
                                 onClick={() => handleAssignClick(order)}
-                                className="inline-flex items-center gap-1 text-xs px-3 py-1 text-teal-600 hover:bg-teal-50 rounded transition-colors"
+                                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 text-teal-600 hover:bg-teal-50 rounded transition-colors whitespace-nowrap"
                               >
                                 <UserPlus className="w-3 h-3" />
                                 Assign
                               </button>
                               <button 
                                 onClick={() => handleViewClick(order)}
-                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                className="inline-flex items-center text-xs px-3 py-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
                               >
                                 Details
                               </button>
@@ -686,23 +778,23 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                             <>
                               <button 
                                 onClick={() => handleAssignClick(order)}
-                                className="inline-flex items-center gap-1 text-xs px-3 py-1 text-teal-600 hover:bg-teal-50 rounded transition-colors"
+                                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 text-teal-600 hover:bg-teal-50 rounded transition-colors whitespace-nowrap"
                               >
                                 <UserPlus className="w-3 h-3" />
                                 Reassign
                               </button>
                               <button 
                                 onClick={() => handleViewClick(order)}
-                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                className="inline-flex items-center text-xs px-3 py-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
                               >
                                 Details
                               </button>
                               <button 
                                 onClick={() => handleCompleteClick(order)}
-                                className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
+                                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 rounded transition-colors whitespace-nowrap"
                               >
                                 <CheckCircle className="w-3 h-3" />
-                                Complete
+                                Complete WO
                               </button>
                             </>
                           )}
@@ -710,13 +802,13 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                             <>
                               <button
                                 onClick={() => handleViewClick(order)}
-                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                className="inline-flex items-center text-xs px-3 py-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
                               >
                                 Details
                               </button>
                               <button 
                                 onClick={() => handleReopenClick(order)}
-                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                                className="inline-flex items-center text-xs px-3 py-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors whitespace-nowrap"
                               >
                                 Reopen
                               </button>
@@ -724,6 +816,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                           )}
                         </div>
                       </td>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{formatDate(order.created_at)}</td>
                     </tr>
                   );
                 })}

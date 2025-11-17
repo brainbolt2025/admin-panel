@@ -581,17 +581,17 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
             </div>
           </div>
 
-          {/* Users Section */}
+          {/* Tenants Section */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Recent Users</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Recent Tenants</h3>
             </div>
 
-            {/* Users Table */}
+            {/* Tenants Table */}
             <div className="overflow-x-auto">
               {loadingUsers ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">Loading users...</p>
+                  <p className="text-gray-500">Loading tenants...</p>
                 </div>
               ) : errorUsers ? (
                 <div className="text-center py-8">

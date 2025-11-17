@@ -60,6 +60,7 @@ function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
   const [pendingTechniciansCount, setPendingTechniciansCount] = useState(0)
+  const [refreshWorkOrdersList, setRefreshWorkOrdersList] = useState<(() => Promise<void>) | null>(null)
 
   // Handle payment success redirect (just log, let Login component handle the UI)
   useEffect(() => {
@@ -272,6 +273,99 @@ function App() {
     fetchPendingTechniciansCount()
   }, [fetchPendingWorkOrdersCount, fetchPendingTechniciansCount])
 
+  // Set up polling for pending counts (updates every 30 seconds)
+  useEffect(() => {
+    if (!userProfile || userProfile.role !== 'pm' || !userProfile.property_id) {
+      return
+    }
+
+    // Poll every 30 seconds to check for updates
+    // COMMENTED OUT FOR TESTING REAL-TIME SUBSCRIPTIONS
+    // const pollInterval = setInterval(() => {
+    //   fetchPendingWorkOrdersCount()
+    //   fetchPendingTechniciansCount()
+    //   // Also refresh the work orders list if available
+    //   if (refreshWorkOrdersList) {
+    //     refreshWorkOrdersList().catch((error) => {
+    //       console.error('Error refreshing work orders list:', error)
+    //     })
+    //   }
+    // }, 30000) // 30 seconds
+
+    // Set up real-time subscriptions
+    const supabaseClient = getAuthenticatedSupabase()
+
+    // Try to subscribe to work_orders table changes (if real-time is enabled)
+    const workOrdersChannel = supabaseClient
+      .channel('pending_work_orders_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'work_orders',
+          filter: `property_id=eq.${userProfile.property_id}`,
+        },
+        (payload) => {
+          console.log('Work order changed, refreshing count:', payload.eventType)
+          fetchPendingWorkOrdersCount()
+          // Also refresh the work orders list if available
+          if (refreshWorkOrdersList) {
+            refreshWorkOrdersList().catch((error) => {
+              console.error('Error refreshing work orders list:', error)
+            })
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Real-time subscription active for work orders')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.log('Real-time not available, using polling only')
+        }
+      })
+
+    // Try to subscribe to users table changes (if real-time is enabled)
+    const techniciansChannel = supabaseClient
+      .channel('pending_technicians_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users',
+          filter: `property_id=eq.${userProfile.property_id}`,
+        },
+        (payload) => {
+          const newRecord = payload.new as any
+          const oldRecord = payload.old as any
+          
+          const isTechnicianChange =
+            (newRecord?.role === 'technician' || oldRecord?.role === 'technician') ||
+            (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
+
+          if (isTechnicianChange) {
+            console.log('Technician changed, refreshing count:', payload.eventType)
+            fetchPendingTechniciansCount()
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Real-time subscription active for technicians')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.log('Real-time not available, using polling only')
+        }
+      })
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      // clearInterval(pollInterval) // COMMENTED OUT - polling disabled for testing
+      supabaseClient.removeChannel(workOrdersChannel)
+      supabaseClient.removeChannel(techniciansChannel)
+    }
+  }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, refreshWorkOrdersList])
+
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
   }
@@ -339,6 +433,8 @@ const pendingWorkOrdersContextValue = useMemo(
     setPendingTechniciansCount: handlePendingTechniciansCountChange,
     refreshPendingCount: fetchPendingWorkOrdersCount,
     refreshPendingTechniciansCount: fetchPendingTechniciansCount,
+    refreshWorkOrdersList,
+    setRefreshWorkOrdersList,
   }),
   [
     pendingWorkOrdersCount,
@@ -347,6 +443,7 @@ const pendingWorkOrdersContextValue = useMemo(
     handlePendingTechniciansCountChange,
     fetchPendingWorkOrdersCount,
     fetchPendingTechniciansCount,
+    refreshWorkOrdersList,
   ],
 )
 
@@ -357,7 +454,7 @@ const pendingWorkOrdersContextValue = useMemo(
 
   const handleNavigateToTenant = (tenantName: string) => {
     setSelectedTenantFilter(tenantName)
-    setActiveItem('Users')
+    setActiveItem('Tenants')
   }
 
   const renderContent = () => {
@@ -372,7 +469,7 @@ const pendingWorkOrdersContextValue = useMemo(
         return <PropertyManagers />
       case 'Work Orders':
         return <WorkOrders selectedWorkOrderId={selectedWorkOrderId} onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)} />
-      case 'Users':
+      case 'Tenants':
         return <Users selectedTenantFilter={selectedTenantFilter} onClearTenantFilter={() => setSelectedTenantFilter(null)} />
       case 'Technicians':
         return <Technicians />

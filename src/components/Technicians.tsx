@@ -187,9 +187,26 @@ const Technicians = () => {
       await fetchTechnicians();
       await refreshPendingTechniciansCount();
 
-      const { data: userData } = await supabaseClient.auth.getUser();
+      // Send approval email
+      if (!selectedTechnician.email) {
+        console.warn('Technician has no email address, cannot send approval email');
+        setConfirmModalOpen(false);
+        setSelectedTechnician(null);
+        setConfirmAction(null);
+        return;
+      }
 
-      if (userData.user) {
+      try {
+        const { data: userData } = await supabaseClient.auth.getUser();
+
+        if (!userData.user) {
+          console.error('User not found, cannot send approval email');
+          setConfirmModalOpen(false);
+          setSelectedTechnician(null);
+          setConfirmAction(null);
+          return;
+        }
+
         const { data: pmData, error: pmError } = await supabaseClient
           .from('users')
           .select('property_id, property_name, name')
@@ -199,37 +216,50 @@ const Technicians = () => {
 
         if (pmError) {
           console.error('Error fetching PM info for technician approval email:', pmError);
-        } else if (selectedTechnician.email) {
-          try {
-            const accessToken = localStorage.getItem('access_token');
-            const response = await fetch(
-              `${config.supabase.url}/functions/v1/notify-technician-approval`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: accessToken
-                    ? `Bearer ${accessToken}`
-                    : `Bearer ${config.supabase.anonKey}`,
-                  apikey: config.supabase.anonKey,
-                },
-                body: JSON.stringify({
-                  email: selectedTechnician.email,
-                  name: selectedTechnician.name || undefined,
-                  propertyName: pmData?.property_name || undefined,
-                  approvedBy: pmData?.name || undefined,
-                }),
-              }
-            );
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              console.error('Failed to send technician approval email:', errorData);
-            }
-          } catch (emailError) {
-            console.error('Error calling notify-technician-approval function:', emailError);
-          }
+          // Continue anyway with undefined values
         }
+
+        console.log('Sending approval email to:', selectedTechnician.email);
+        console.log('Email data:', {
+          email: selectedTechnician.email,
+          name: selectedTechnician.name,
+          propertyName: pmData?.property_name,
+          approvedBy: pmData?.name,
+        });
+
+        const accessToken = localStorage.getItem('access_token');
+        const response = await fetch(
+          `${config.supabase.url}/functions/v1/notify-technician-approval`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: accessToken
+                ? `Bearer ${accessToken}`
+                : `Bearer ${config.supabase.anonKey}`,
+              apikey: config.supabase.anonKey,
+            },
+            body: JSON.stringify({
+              email: selectedTechnician.email,
+              name: selectedTechnician.name || undefined,
+              propertyName: pmData?.property_name || undefined,
+              approvedBy: pmData?.name || undefined,
+            }),
+          }
+        );
+
+        const responseData = await response.json().catch(() => ({}));
+        console.log('Email service response:', response.status, responseData);
+
+        if (!response.ok) {
+          console.error('Failed to send technician approval email:', responseData);
+          // Don't fail the approval if email fails, but log it
+        } else {
+          console.log('Technician approval email sent successfully');
+        }
+      } catch (emailError) {
+        console.error('Error calling notify-technician-approval function:', emailError);
+        // Don't fail the approval if email fails
       }
 
       setConfirmModalOpen(false);

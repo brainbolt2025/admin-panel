@@ -88,29 +88,42 @@ serve(async (req) => {
       )
     }
 
-    const subject = `You're approved to start work at ${propertyName}!`
+    const subject = `Your technician profile has been approved for ${propertyName}`
     const htmlBody = `
       <html>
         <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 16px;">Welcome aboard!</h2>
           <p>Hi ${technicianName},</p>
-          <p>Your technician access for <strong>${propertyName}</strong> has been approved.</p>
-          <p>You can now sign in with your registered email to view assignments, update work orders, and keep residents informed.</p>
-          <p style="margin-top: 32px;">If you need any help getting started, reply to this email and we'll be glad to assist.</p>
-          <p style="margin-top: 40px;">Best regards,<br/>${approvedBy}</p>
+          <p>Great news — your technician profile has been approved by the Property Manager for <strong>${propertyName}</strong>.</p>
+          <p>You can now log in to your Asine account and start receiving work orders assigned to you.</p>
+          <p style="margin-top: 24px; margin-bottom: 16px;"><strong>Here's what you can do next:</strong></p>
+          <ul style="list-style: none; padding: 0; margin: 0 0 24px 0;">
+            <li style="margin-bottom: 12px;">🔧 View and manage your assigned work orders in the app.</li>
+            <li style="margin-bottom: 12px;">💬 Communicate directly with tenants or the property manager.</li>
+            <li style="margin-bottom: 12px;">Mark jobs as complete once finished.</li>
+          </ul>
+          <p style="margin-top: 24px;">
+            <a href="https://asine.app/login" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+              Login here
+            </a>
+          </p>
         </body>
       </html>
     `
 
     const textBody = `Hi ${technicianName},
 
-Your technician access for ${propertyName} has been approved.
+Great news — your technician profile has been approved by the Property Manager for ${propertyName}.
+You can now log in to your Asine account and start receiving work orders assigned to you.
 
-Sign in with your registered email to view assignments, update work orders, and keep residents informed.
+Here's what you can do next:
 
-If you have any questions, reply to this email and we'll be glad to assist.
+🔧 View and manage your assigned work orders in the app.
 
-${approvedBy}`
+💬 Communicate directly with tenants or the property manager.
+
+Mark jobs as complete once finished.
+
+Login here: https://asine.app/login`
 
     const mailgunBaseUrl =
       MAILGUN_REGION === 'eu' ? 'https://api.eu.mailgun.net/v3' : 'https://api.mailgun.net/v3'

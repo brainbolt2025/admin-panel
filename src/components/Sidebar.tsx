@@ -50,7 +50,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
   const pmNavigationItems = [
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
     { id: 'Work Orders', label: 'Work Orders', icon: ClipboardList },
-    { id: 'Users', label: 'Users', icon: Users },
+    { id: 'Tenants', label: 'Tenants', icon: Users },
     { id: 'Technicians', label: 'Technicians', icon: Wrench },
   ];
 
