@@ -10,6 +10,7 @@ import WorkOrders from './components/WorkOrders'
 import Users from './components/Users'
 import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
+import Chat from './components/Chat'
 import { getAuthenticatedSupabase, supabase } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 
@@ -475,6 +476,8 @@ const pendingWorkOrdersContextValue = useMemo(
         return <Technicians />
       case 'Approvals':
         return <Approvals />
+      case 'Chat':
+        return <Chat workOrderId={selectedWorkOrderId} />
       default:
         return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
     }
