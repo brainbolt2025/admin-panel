@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- Step 3: Create conversation_participants table (optional but recommended)
 -- Explicitly track who is part of each conversation
 -- This makes it easier to query "all conversations for user X"
+-- Note: Only tenants and technicians participate (PMs are not added as participants)
 CREATE TABLE IF NOT EXISTS conversation_participants (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -151,6 +152,7 @@ CREATE TRIGGER trigger_create_message_receipts
 -- SECURITY DEFINER allows the function to run with elevated privileges, bypassing RLS
 -- This is necessary because the function needs to insert conversations and participants
 -- for users that may not be the calling user
+-- Note: Only tenants and technicians are added as participants (PMs are excluded)
 CREATE OR REPLACE FUNCTION create_conversation_participants(p_work_order_id UUID)
 RETURNS UUID
 LANGUAGE plpgsql
@@ -161,7 +163,6 @@ DECLARE
   v_conversation_id UUID;
   v_tenant_id UUID;
   v_technician_id UUID;
-  v_pm_id UUID;
   v_property_id UUID;
 BEGIN
   -- Get work order details
@@ -188,13 +189,6 @@ BEGIN
     RETURN v_conversation_id;
   END IF;
   
-  -- Get PM from property (PM is the user with role='pm' and property_id matching)
-  SELECT id INTO v_pm_id
-  FROM users
-  WHERE property_id = v_property_id
-    AND role = 'pm'
-  LIMIT 1;
-  
   -- Create conversation
   INSERT INTO conversations (work_order_id)
   VALUES (p_work_order_id)
@@ -211,13 +205,6 @@ BEGIN
   IF v_technician_id IS NOT NULL THEN
     INSERT INTO conversation_participants (conversation_id, user_id, role)
     VALUES (v_conversation_id, v_technician_id, 'technician')
-    ON CONFLICT (conversation_id, user_id) DO NOTHING;
-  END IF;
-  
-  -- Add PM as participant (if property has a PM)
-  IF v_pm_id IS NOT NULL THEN
-    INSERT INTO conversation_participants (conversation_id, user_id, role)
-    VALUES (v_conversation_id, v_pm_id, 'pm')
     ON CONFLICT (conversation_id, user_id) DO NOTHING;
   END IF;
   
@@ -245,6 +232,10 @@ ALTER TABLE conversation_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE message_receipts ENABLE ROW LEVEL SECURITY;
 
 -- Step 10: Create RLS policies
+-- IMPORTANT: Before creating conversations, ensure tenants and technicians have SELECT policies on work_orders
+-- They need to be able to read their own work orders for the INSERT policy check to work
+-- See FIX-CONVERSATIONS-RLS-COMPLETE.sql for policies that need to exist on work_orders table
+--
 -- Users can only see conversations they're participants in
 DROP POLICY IF EXISTS "Users can view conversations they participate in" ON conversations;
 CREATE POLICY "Users can view conversations they participate in"
@@ -261,15 +252,19 @@ CREATE POLICY "Users can view conversations they participate in"
 -- Note: The UNIQUE constraint on work_order_id prevents duplicate conversations
 -- The create_conversation_participants function is SECURITY DEFINER and validates everything
 -- This policy allows direct inserts when user is tenant or technician
+-- IMPORTANT: In WITH CHECK clauses, reference columns directly (work_order_id), not through table name (conversations.work_order_id)
 DROP POLICY IF EXISTS "Users can create conversations for their work orders" ON conversations;
 CREATE POLICY "Users can create conversations for their work orders"
   ON conversations FOR INSERT
   TO authenticated
   WITH CHECK (
-    EXISTS (
+    -- User must provide a work_order_id
+    work_order_id IS NOT NULL
+    -- AND user must be tenant or technician for that work order
+    AND EXISTS (
       SELECT 1 
       FROM work_orders 
-      WHERE id = conversations.work_order_id
+      WHERE id = work_order_id  -- Reference column directly, not conversations.work_order_id
         AND (
           tenant_id = auth.uid() OR
           technician_id = auth.uid()

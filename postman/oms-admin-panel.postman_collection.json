@@ -79,6 +79,43 @@
         "description": "Creates a technician user. Provide either property_id or property_name. Technicians default to pending approval."
       },
       "response": []
+    },
+    {
+      "name": "Create Conversation Participants",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "apikey",
+            "value": "{{anon_key}}"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"work_order_id\": \"<work-order-uuid>\"\n}"
+        },
+        "url": {
+          "raw": "{{supabase_url}}/functions/v1/create-conversation-participants",
+          "host": [
+            "{{supabase_url}}"
+          ],
+          "path": [
+            "functions",
+            "v1",
+            "create-conversation-participants"
+          ]
+        },
+        "description": "Creates a conversation for a work order and automatically adds all participants (tenant, technician, and PM). Requires authenticated user (tenant, technician, or PM) related to the work order. Returns the conversation_id if successful."
+      },
+      "response": []
     }
   ],
   "variable": [
@@ -91,6 +128,17 @@
       "key": "service_role_key",
       "value": "YOUR-SERVICE-ROLE-KEY",
       "type": "string"
+    },
+    {
+      "key": "anon_key",
+      "value": "YOUR-ANON-KEY",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "YOUR-USER-ACCESS-TOKEN",
+      "type": "string",
+      "description": "JWT access token from authenticated user (tenant, technician, or PM). Get this from your app after login."
     }
   ]
 }

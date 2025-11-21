@@ -319,9 +319,15 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
   useEffect(() => {
     if (!selectedConversationId || !currentUserId) return;
 
+    console.log('Setting up Realtime subscription for conversation:', selectedConversationId);
+
     // Subscribe to new messages in this conversation
     const messagesChannel = supabase
-      .channel(`messages-${selectedConversationId}`)
+      .channel(`messages-${selectedConversationId}`, {
+        config: {
+          broadcast: { self: true },
+        },
+      })
       .on(
         'postgres_changes',
         {
@@ -425,9 +431,21 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
           );
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✓ Successfully subscribed to real-time messages');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('✗ Failed to subscribe to real-time messages - Channel error');
+        } else if (status === 'TIMED_OUT') {
+          console.error('✗ Failed to subscribe to real-time messages - Timeout');
+        } else if (status === 'CLOSED') {
+          console.warn('⚠ Realtime subscription closed');
+        }
+      });
 
     return () => {
+      console.log('Cleaning up Realtime subscription for conversation:', selectedConversationId);
       messagesChannel.unsubscribe();
     };
   }, [selectedConversationId, currentUserId, fetchConversations]);

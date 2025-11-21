@@ -9,6 +9,11 @@ export const supabase = createClient(config.supabase.url, config.supabase.anonKe
     detectSessionInUrl: true,
     flowType: 'pkce',
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
 })
 
 // Backwards-compatible helper – all callers share the same client instance
