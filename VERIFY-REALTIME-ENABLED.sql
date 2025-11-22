@@ -146,3 +146,4 @@ WHERE schemaname = 'public'
   AND tablename IN ('messages', 'conversations', 'message_receipts')
 ORDER BY tablename;
 
+

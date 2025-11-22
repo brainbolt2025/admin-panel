@@ -164,3 +164,4 @@ WHERE pubname = 'supabase_realtime'
 3. Try restarting the Supabase Realtime service (contact Supabase support)
 4. Check if this is a known issue on Supabase Status page
 
+

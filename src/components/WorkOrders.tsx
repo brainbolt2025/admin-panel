@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type FC } from 'react';
 import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
+import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
 interface WorkOrder {
@@ -475,6 +476,40 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       const transformedData = transformWorkOrders(ordersData);
 
       setWorkOrders(transformedData);
+
+      // Send email notifications (fire and forget - don't block UI)
+      const supabaseUrl = config.supabase.url;
+      const anonKey = config.supabase.anonKey;
+      
+      // Notify technician
+      fetch(`${supabaseUrl}/functions/v1/notify-technician-assignment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({
+          work_order_id: selectedWorkOrder.id,
+        }),
+      }).catch((err) => {
+        console.error('Failed to send technician notification:', err);
+        // Don't show error to user - assignment was successful
+      });
+
+      // Notify tenant
+      fetch(`${supabaseUrl}/functions/v1/notify-tenant-assignment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({
+          work_order_id: selectedWorkOrder.id,
+        }),
+      }).catch((err) => {
+        console.error('Failed to send tenant notification:', err);
+        // Don't show error to user - assignment was successful
+      });
 
       // Close modal and reset
       setAssignModalOpen(false);

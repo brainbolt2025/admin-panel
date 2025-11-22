@@ -418,3 +418,4 @@ Test if WebSocket is working:
 
 The Supabase JS client automatically manages WebSocket connections - you just need to subscribe to the changes you want to listen to!
 
+

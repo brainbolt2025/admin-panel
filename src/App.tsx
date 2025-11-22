@@ -61,6 +61,7 @@ function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
   const [pendingTechniciansCount, setPendingTechniciansCount] = useState(0)
+  const [pendingTenantsCount, setPendingTenantsCount] = useState(0)
   const [refreshWorkOrdersList, setRefreshWorkOrdersList] = useState<(() => Promise<void>) | null>(null)
 
   // Handle payment success redirect (just log, let Login component handle the UI)
@@ -194,6 +195,36 @@ function App() {
     }
   }, [userProfile])
 
+  const fetchPendingTenantsCount = useCallback(async () => {
+    if (!userProfile || userProfile.role !== 'pm') {
+      setPendingTenantsCount(0)
+      return
+    }
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase()
+      let query = supabaseClient
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'tenant')
+        .eq('approved', false)
+
+      if (userProfile.property_id) {
+        query = query.eq('property_id', userProfile.property_id)
+      }
+
+      const { count, error } = await query
+
+      if (error) {
+        throw error
+      }
+
+      setPendingTenantsCount(count ?? 0)
+    } catch (error) {
+      console.error('Failed to fetch pending tenants count:', error)
+    }
+  }, [userProfile])
+
   // Keep tokens in sync with Supabase session changes and refresh automatically
   useEffect(() => {
     const {
@@ -272,7 +303,8 @@ function App() {
   useEffect(() => {
     fetchPendingWorkOrdersCount()
     fetchPendingTechniciansCount()
-  }, [fetchPendingWorkOrdersCount, fetchPendingTechniciansCount])
+    fetchPendingTenantsCount()
+  }, [fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount])
 
   // Set up polling for pending counts (updates every 30 seconds)
   useEffect(() => {
@@ -345,15 +377,24 @@ function App() {
             (newRecord?.role === 'technician' || oldRecord?.role === 'technician') ||
             (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
 
+          const isTenantChange =
+            (newRecord?.role === 'tenant' || oldRecord?.role === 'tenant') ||
+            (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
+
           if (isTechnicianChange) {
             console.log('Technician changed, refreshing count:', payload.eventType)
             fetchPendingTechniciansCount()
+          }
+
+          if (isTenantChange) {
+            console.log('Tenant changed, refreshing count:', payload.eventType)
+            fetchPendingTenantsCount()
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription active for technicians')
+          console.log('Real-time subscription active for technicians and tenants')
         } else if (status === 'CHANNEL_ERROR') {
           console.log('Real-time not available, using polling only')
         }
@@ -365,7 +406,7 @@ function App() {
       supabaseClient.removeChannel(workOrdersChannel)
       supabaseClient.removeChannel(techniciansChannel)
     }
-  }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, refreshWorkOrdersList])
+  }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount, refreshWorkOrdersList])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -426,24 +467,39 @@ const handlePendingTechniciansCountChange = useCallback(
   [userProfile],
 )
 
+const handlePendingTenantsCountChange = useCallback(
+  (count: number) => {
+    if (userProfile?.role === 'pm') {
+      setPendingTenantsCount(count)
+    }
+  },
+  [userProfile],
+)
+
 const pendingWorkOrdersContextValue = useMemo(
   () => ({
     pendingCount: pendingWorkOrdersCount,
     pendingTechniciansCount,
+    pendingTenantsCount,
     setPendingCount: handlePendingCountChange,
     setPendingTechniciansCount: handlePendingTechniciansCountChange,
+    setPendingTenantsCount: handlePendingTenantsCountChange,
     refreshPendingCount: fetchPendingWorkOrdersCount,
     refreshPendingTechniciansCount: fetchPendingTechniciansCount,
+    refreshPendingTenantsCount: fetchPendingTenantsCount,
     refreshWorkOrdersList,
     setRefreshWorkOrdersList,
   }),
   [
     pendingWorkOrdersCount,
     pendingTechniciansCount,
+    pendingTenantsCount,
     handlePendingCountChange,
     handlePendingTechniciansCountChange,
+    handlePendingTenantsCountChange,
     fetchPendingWorkOrdersCount,
     fetchPendingTechniciansCount,
+    fetchPendingTenantsCount,
     refreshWorkOrdersList,
   ],
 )

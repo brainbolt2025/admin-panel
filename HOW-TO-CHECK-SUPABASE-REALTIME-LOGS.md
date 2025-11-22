@@ -170,3 +170,4 @@ If messages aren't appearing in real-time but are being stored:
 - Look for `Realtime subscription status` - should say `SUBSCRIBED`
 - If it says `CHANNEL_ERROR` or `TIMED_OUT`, Realtime might not be enabled properly in Dashboard
 
+

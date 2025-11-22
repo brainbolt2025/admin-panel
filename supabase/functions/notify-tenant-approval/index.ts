@@ -96,8 +96,7 @@ serve(async (req) => {
           <h2 style="color: #0f766e; margin-bottom: 16px;">You're Approved!</h2>
           <p>Hi ${tenantName},</p>
           <p>Great news — your request to join <strong>${propertyName}</strong> has been approved.</p>
-          <p>You can now sign in with the email you used to register and start exploring the resident portal.</p>
-          <p style="margin-top: 32px;">If you have any questions, reply to this email and we'll be happy to help.</p>
+          <p style="margin-top: 32px;">If you have any questions, please contact your property manager.</p>
           <p style="margin-top: 40px;">Warm regards,<br/>${approvedBy}</p>
         </body>
       </html>
@@ -107,9 +106,7 @@ serve(async (req) => {
 
 Your request to join ${propertyName} has been approved.
 
-You can now sign in with your registered email and start using the resident portal.
-
-If you have any questions, just reply to this email.
+If you have any questions, please contact your property manager.
 
 ${approvedBy}`
 

@@ -25,3 +25,4 @@ WHERE conname = 'conversation_participants_role_check'
 
 -- Expected output should show: CHECK (role IN ('tenant', 'technician', 'pm'))
 
+
