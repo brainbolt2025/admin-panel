@@ -18,6 +18,7 @@ interface CreateTenantRequest {
   name: string
   property_id?: string // Optional: if provided, use this property_id
   property_name?: string // Optional: if provided, find property by name
+  unit_number?: string // Optional: unit number for the tenant
 }
 
 // Main handler function
@@ -71,7 +72,7 @@ serve(async (req) => {
       )
     }
 
-    const { email, password, name, property_id, property_name } = body
+    const { email, password, name, property_id, property_name, unit_number } = body
 
     // Validate required fields
     if (!email || !password || !name) {
@@ -246,9 +247,10 @@ serve(async (req) => {
           name,
           role: 'tenant',
           property_id: finalPropertyId,  // Include as string for metadata
-          property_name: finalPropertyName
+          property_name: finalPropertyName,
+          unit_number: unit_number || null
         },
-        email_confirm: true, // Auto-confirm email for tenants
+        email_confirm: false, // Send confirmation email to tenant
       })
     })
     
@@ -325,10 +327,11 @@ serve(async (req) => {
           role: 'tenant',
           property_id: finalPropertyId,
           property_name: finalPropertyName,
+          unit_number: unit_number || null,
           approved: false // Default to pending approval
         })
         .eq('id', authUserId)
-        .select('id, name, email, role, property_id, property_name, approved')
+        .select('id, name, email, role, property_id, property_name, unit_number, approved')
         .single()
 
       userData = updateResult.data
@@ -354,9 +357,10 @@ serve(async (req) => {
               role: 'tenant',
               property_id: finalPropertyId,
               property_name: finalPropertyName,
+              unit_number: unit_number || null,
               approved: false
             })
-            .select('id, name, email, role, property_id, property_name, approved')
+            .select('id, name, email, role, property_id, property_name, unit_number, approved')
             .single()
           
           userData = insertResult.data
@@ -384,6 +388,7 @@ serve(async (req) => {
           name,
           property_id: finalPropertyId,
           property_name: finalPropertyName,
+          unit_number: unit_number || null,
           database_error: userError.message,
           message: 'Tenant auth user created. You may need to manually fix the database record.',
           troubleshooting: 'Check Supabase logs and run: SELECT * FROM users WHERE id = \'' + authUserId + '\''
@@ -397,6 +402,9 @@ serve(async (req) => {
 
     console.log('✅ Tenant created successfully:', userData?.id || authUserId)
 
+    // Note: When email_confirm: false, Supabase automatically sends a confirmation email
+    // The tenant will receive an email with a confirmation link to verify their account
+
     // Return success response
     return new Response(
       JSON.stringify({ 
@@ -406,7 +414,8 @@ serve(async (req) => {
         name,
         property_id: finalPropertyId,
         property_name: finalPropertyName,
-        message: 'Tenant account created successfully. Tenant can now sign in.'
+        unit_number: unit_number || null,
+        message: 'Tenant account created successfully. A confirmation email has been sent. Please check your email to verify your account before signing in.'
       }),
       { 
         status: 200, 
