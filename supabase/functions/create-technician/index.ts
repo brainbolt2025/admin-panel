@@ -241,7 +241,7 @@ serve(async (req) => {
           property_id: finalPropertyId,
           property_name: finalPropertyName,
         },
-        email_confirm: true,
+        email_confirm: false, // Send confirmation email to technician
       }),
     })
 
@@ -381,6 +381,175 @@ serve(async (req) => {
 
     console.log('Technician created successfully:', userData?.id || authUserId)
 
+    // Step 5: Generate verification link and send custom verification email
+    console.log('Step 5: Sending verification email to technician')
+    
+    let emailSent = false
+    let emailError: string | null = null
+    
+    try {
+      // Determine redirect URL based on environment
+      // For mobile apps (technicians), use deep link scheme or public URL
+      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+      const isTestMode = stripeSecretKey.startsWith('sk_test_')
+      
+      // Get deep link configuration
+      let APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
+      let APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
+      
+      // Determine redirect URL
+      let redirectTo: string
+      if (APP_DEEP_LINK_SCHEME) {
+        // Use deep link scheme for mobile app
+        redirectTo = `${APP_DEEP_LINK_SCHEME}auth/verified`
+      } else if (APP_URL) {
+        // Use configured app URL
+        redirectTo = `${APP_URL}/auth/verified`
+      } else {
+        // Fallback: use admin panel URL (public web URL that can handle verification)
+        redirectTo = 'https://admin.asine.app/auth/verified'
+      }
+      
+      console.log('Generating verification link with redirect_to:', redirectTo)
+      
+      // Use Supabase Admin API to generate a confirmation link
+      const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseServiceKey,
+          'Authorization': `Bearer ${supabaseServiceKey}`
+        },
+        body: JSON.stringify({
+          type: 'signup',
+          email: email,
+          redirect_to: redirectTo,
+        })
+      })
+
+      if (!generateLinkResponse.ok) {
+        const errorData = await generateLinkResponse.json().catch(() => ({}))
+        console.error('Error generating verification link:', errorData)
+        emailError = errorData.error_description || errorData.message || 'Failed to generate verification link'
+      } else {
+        const linkData = await generateLinkResponse.json()
+        const actionLink = linkData.action_link || linkData.properties?.action_link || linkData.properties?.actionLink
+        
+        if (!actionLink) {
+          console.error('No action_link found in generated link data:', JSON.stringify(linkData, null, 2))
+          emailError = 'Verification link generated but no action link found in response'
+        } else {
+          console.log('Found action_link:', actionLink.substring(0, 100) + '...')
+          
+          // Use Supabase's action_link directly without modifying redirect_to
+          // The action_link already points to Supabase's verification endpoint
+          // which will verify the email automatically when clicked
+          // The redirect_to in Supabase's action_link is already configured correctly
+          const verifyLink = actionLink
+          
+          console.log('Verification link configured:', {
+            actionLink: actionLink.substring(0, 150) + '...',
+            note: 'Using Supabase action_link directly for email verification'
+          })
+            
+            // Send email using Mailgun
+            const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
+            const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
+            const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
+            
+            if (!MAILGUN_API_KEY) {
+              console.warn('MAILGUN_API_KEY not configured, skipping custom email send')
+              emailError = 'Email service not configured. Supabase default email may be sent.'
+            } else {
+              // Build technician-specific email HTML
+              const htmlBody = `
+                <html>
+                  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #0f766e; margin-bottom: 20px;">Welcome to Asine</h2>
+                    <p>Hi ${name},</p>
+                    <p>Please verify your email to activate your technician account at ${finalPropertyName || 'your property'}.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                      <a href="${verifyLink}" 
+                        style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
+                        Verify Account
+                      </a>
+                    </div>
+                    <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                      <strong>Important:</strong> This verification link expires in 24 hours.
+                    </p>
+                    <p style="color: #666; font-size: 14px;">
+                      After verifying your email, your account will be reviewed by your property manager before you can sign in.
+                    </p>
+                    <p style="color: #666; font-size: 14px;">
+                      If you didn't create an account, please ignore this email.
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                    <p style="color: #999; font-size: 12px;">
+                      If the button doesn't work, copy and paste this link into your browser:<br>
+                      <a href="${verifyLink}" style="color: #0f766e; word-break: break-all;">${verifyLink}</a>
+                    </p>
+                  </body>
+                </html>
+              `
+              
+              const textBody = `Welcome to Asine
+
+Hi ${name},
+
+Please verify your email to activate your technician account at ${finalPropertyName || 'your property'}.
+
+Verification Link: ${verifyLink}
+
+This link expires in 24 hours.
+
+After verifying your email, your account will be reviewed by your property manager before you can sign in.
+
+If you didn't create an account, please ignore this email.`
+              
+              // Send via Mailgun
+              const mailgunBaseUrl = MAILGUN_REGION === 'eu' 
+                ? 'https://api.eu.mailgun.net/v3'
+                : 'https://api.mailgun.net/v3'
+              const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
+              const authHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
+              
+              const formData = new FormData()
+              formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)
+              formData.append('to', email)
+              formData.append('subject', 'Verify your Asine technician account')
+              formData.append('html', htmlBody)
+              formData.append('text', textBody)
+              
+              const mailgunResponse = await fetch(mailgunUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: authHeader,
+                },
+                body: formData,
+              })
+              
+              if (mailgunResponse.ok) {
+                const mailgunResult = await mailgunResponse.json()
+                console.log('✅ Verification email sent successfully to:', email)
+                console.log('Mailgun message ID:', mailgunResult.id)
+                emailSent = true
+              } else {
+                const errorText = await mailgunResponse.text().catch(() => 'Unknown error')
+                console.error('Failed to send verification email via Mailgun:', {
+                  status: mailgunResponse.status,
+                  error: errorText
+                })
+                emailError = `Mailgun error: ${mailgunResponse.status} ${errorText}`
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in email sending process:', error)
+      emailError = error instanceof Error ? error.message : 'Unknown error sending verification email'
+    }
+
     const serviceRoleResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: {
@@ -426,7 +595,11 @@ serve(async (req) => {
         refresh_token: tokenResult.refresh_token,
         token_type: tokenResult.token_type,
         expires_in: tokenResult.expires_in,
-        message: 'Technician account created successfully and awaits PM approval.',
+        email_sent: emailSent,
+        email_error: emailError || undefined,
+        message: emailSent 
+          ? 'Technician account created successfully. A verification email has been sent. Please check your email to verify your account before signing in.'
+          : 'Technician account created successfully. ' + (emailError ? 'However, there was an issue sending the verification email. ' + emailError + '.' : 'A verification email may have been sent.') + ' Your account awaits PM approval.',
       }),
       {
         status: 200,

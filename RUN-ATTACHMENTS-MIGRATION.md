@@ -48,3 +48,4 @@ If you get an error:
 - Check that the `work_orders` table exists
 - If the column already exists, the `ADD COLUMN IF NOT EXISTS` will skip it safely
 
+

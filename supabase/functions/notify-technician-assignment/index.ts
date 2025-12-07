@@ -176,7 +176,6 @@ serve(async (req) => {
     // Build email content
     const workOrderTitle = workOrder.title || workOrder.description || 'Untitled Work Order'
     const priorityLabel = workOrder.priority || 'Not specified'
-    const unitInfo = workOrder.unit_number ? ` (Unit ${workOrder.unit_number})` : ''
 
     const htmlBody = `
       <html>
@@ -189,7 +188,8 @@ serve(async (req) => {
             <p style="margin: 0 0 8px 0;"><strong>Title:</strong> ${workOrderTitle}</p>
             ${workOrder.description ? `<p style="margin: 0 0 8px 0;"><strong>Description:</strong> ${workOrder.description}</p>` : ''}
             <p style="margin: 0 0 8px 0;"><strong>Priority:</strong> ${priorityLabel}</p>
-            <p style="margin: 0 0 8px 0;"><strong>Property:</strong> ${propertyName}${unitInfo}</p>
+            <p style="margin: 0 0 8px 0;"><strong>Property:</strong> ${propertyName}</p>
+            ${workOrder.unit_number ? `<p style="margin: 0 0 8px 0;"><strong>Unit Number:</strong> ${workOrder.unit_number}</p>` : ''}
             <p style="margin: 0 0 8px 0;"><strong>Tenant:</strong> ${tenantName}</p>
             <p style="margin: 0;"><strong>Status:</strong> ${workOrder.status || 'Pending'}</p>
           </div>
@@ -215,8 +215,8 @@ You have been assigned to a new work order:
 
 Title: ${workOrderTitle}
 ${workOrder.description ? `Description: ${workOrder.description}\n` : ''}Priority: ${priorityLabel}
-Property: ${propertyName}${unitInfo}
-Tenant: ${tenantName}
+Property: ${propertyName}
+${workOrder.unit_number ? `Unit Number: ${workOrder.unit_number}\n` : ''}Tenant: ${tenantName}
 Status: ${workOrder.status || 'Pending'}
 
 View the work order: ${workOrderLink}
