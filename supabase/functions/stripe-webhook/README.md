@@ -9,6 +9,7 @@ This Supabase Edge Function handles Stripe webhook events to automatically updat
   - `checkout.session.completed` - Payment successful
   - `invoice.paid` - Recurring payment successful
   - `customer.subscription.created` - New subscription started
+  - `customer.subscription.deleted` - Subscription cancelled/deleted
 - Updates user records with subscription status
 - Creates subscription tracking records
 - Handles errors gracefully
@@ -79,6 +80,7 @@ https://YOUR_PROJECT.supabase.co/functions/v1/stripe-webhook
    - `checkout.session.completed`
    - `invoice.paid`
    - `customer.subscription.created`
+   - `customer.subscription.deleted` (for cancellation handling)
 5. Click **Add endpoint**
 6. **Important:** Copy the "Signing secret" (starts with `whsec_...`)
 7. Go back to Supabase and add it as `STRIPE_WEBHOOK_SECRET`
@@ -98,6 +100,9 @@ stripe trigger invoice.paid
 
 # Trigger a test subscription creation
 stripe trigger customer.subscription.created
+
+# Trigger a test subscription deletion
+stripe trigger customer.subscription.deleted
 ```
 
 ### Option 2: Using Stripe Dashboard
@@ -143,6 +148,15 @@ When a new subscription is created:
 
 1. Extracts metadata from the subscription
 2. Updates the user record with subscription details
+
+### Event: `customer.subscription.deleted`
+
+When a subscription is cancelled or deleted:
+
+1. Finds the user by `stripe_customer_id`
+2. Updates `subscribed = false`
+3. Updates `subscription_status = 'canceled'`
+4. Updates the `subscriptions` table status to `'canceled'`
 
 ## Security
 

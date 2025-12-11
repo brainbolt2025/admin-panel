@@ -53,17 +53,21 @@ serve(async (req) => {
 
     console.log('Processing password reset request for:', email)
 
-    // Check if user exists
+    // Normalize email
+    const normalizedEmail = email.toLowerCase().trim()
+    
+    // Check if user exists in public.users table
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, name, email, role')
-      .eq('email', email.toLowerCase().trim())
+      .eq('email', normalizedEmail)
       .single()
 
     // Always return success to prevent email enumeration attacks
     // Even if user doesn't exist, return success message
     if (userError || !userData) {
-      console.log('User not found (or error):', userError?.message || 'No user found')
+      console.log('User not found in public.users table (or error):', userError?.message || 'No user found')
+      console.log('Email searched:', normalizedEmail)
       // Return success to prevent email enumeration
       return new Response(
         JSON.stringify({
@@ -76,6 +80,13 @@ serve(async (req) => {
 
     const userName = userData.name || 'User'
     const userRole = userData.role || 'tenant'
+    
+    console.log(`Processing password reset for ${userRole}:`, {
+      email: normalizedEmail,
+      name: userName,
+      role: userRole,
+      userId: userData.id
+    })
 
     // Determine redirect URL based on environment and user role
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
@@ -111,8 +122,10 @@ serve(async (req) => {
     }
 
     console.log('Generating password reset link with redirect_to:', redirectTo)
+    console.log('Email being sent to Auth API:', normalizedEmail)
 
     // Use Supabase Admin API to generate a password recovery link
+    // NOTE: This requires the user to exist in auth.users, not just public.users
     const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
       method: 'POST',
       headers: {
@@ -122,14 +135,40 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         type: 'recovery',
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
         redirect_to: redirectTo,
       })
     })
 
     if (!generateLinkResponse.ok) {
       const errorData = await generateLinkResponse.json().catch(() => ({}))
-      console.error('Error generating password reset link:', errorData)
+      console.error('Error generating password reset link from Auth API:', errorData)
+      console.error('This usually means the user exists in public.users but not in auth.users')
+      console.error('User role:', userRole, 'User ID:', userData.id, 'Email:', normalizedEmail)
+      
+      // Try to check if user exists in auth.users by email
+      // Note: We can't directly query auth.users, but we can try to get user by ID
+      try {
+        const getUserResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userData.id}`, {
+          method: 'GET',
+          headers: {
+            'apikey': supabaseServiceKey,
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          }
+        })
+        
+        if (getUserResponse.ok) {
+          const authUserData = await getUserResponse.json()
+          console.log('User found in auth.users, email:', authUserData.email)
+          console.log('Email match:', authUserData.email?.toLowerCase() === normalizedEmail)
+        } else {
+          console.error('User not found in auth.users (checked by ID)')
+          console.error('User may need to be created in auth.users first, or IDs do not match')
+        }
+      } catch (checkError) {
+        console.error('Error checking auth.users:', checkError)
+      }
+      
       // Still return success to prevent email enumeration
       return new Response(
         JSON.stringify({

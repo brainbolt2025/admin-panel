@@ -143,35 +143,34 @@ serve(async (req) => {
     }
 
     // Determine deep link for mobile app
-    // Auto-detect environment: test mode uses localhost, production uses app URLs
-    
-    // Check if we're in test/dev mode (similar to other functions)
+    // Use web URL format for better email client compatibility (matches working Dec 3 emails)
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
     const isTestMode = stripeSecretKey.startsWith('sk_test_')
     
     // Get deep link configuration
-    let APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
     let APP_URL = Deno.env.get('APP_URL') || Deno.env.get('BASE_URL') || ''
     
-    // For dev/staging (test mode), use localhost deep links
+    // In test mode, prioritize web URL (http://localhost:8081) for email compatibility
+    // This matches the old working emails from Dec 3
     if (isTestMode) {
-      if (!APP_DEEP_LINK_SCHEME) {
-        // Default to localhost deep link for dev (configurable port)
-        const DEV_APP_PORT = Deno.env.get('DEV_APP_PORT') || '8081'
-        APP_URL = APP_URL || `http://localhost:${DEV_APP_PORT}`
-      }
-      // If custom scheme is set, still use it even in dev mode
+      const DEV_APP_PORT = Deno.env.get('DEV_APP_PORT') || '8081'
+      APP_URL = APP_URL || `http://localhost:${DEV_APP_PORT}`
     }
     
     // Fallback for production if no URL set
-    if (!APP_URL && !APP_DEEP_LINK_SCHEME) {
+    if (!APP_URL) {
       APP_URL = 'https://app.asine.app'
     }
     
-    // Create deep link: if scheme is provided, use custom URL scheme; otherwise use universal link
-    const workOrderLink = APP_DEEP_LINK_SCHEME
-      ? `${APP_DEEP_LINK_SCHEME}work-order/${work_order_id}`
-      : `${APP_URL}/work-order/${work_order_id}`
+    // Always use web URL format (matches old working emails)
+    // Web URLs work better in email clients and can redirect to app via Android App Links
+    const workOrderLink = `${APP_URL}/work-order/${work_order_id}`
+    
+    console.log('=== Technician Assignment Link (Web URL Format) ===')
+    console.log('APP_URL:', APP_URL)
+    console.log('isTestMode:', isTestMode)
+    console.log('Generated work order link:', workOrderLink)
+    console.log('===================================================')
 
     // Build email content
     const workOrderTitle = workOrder.title || workOrder.description || 'Untitled Work Order'

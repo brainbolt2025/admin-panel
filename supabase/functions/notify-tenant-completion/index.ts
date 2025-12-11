@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
-interface NotifyTenantRequest {
+interface NotifyTenantCompletionRequest {
   work_order_id: string
 }
 
@@ -20,7 +20,6 @@ serve(async (req) => {
 
   try {
     // Create Supabase client with service role key for admin access
-    // Note: These functions use service role key internally, so user auth is optional
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     
@@ -34,7 +33,7 @@ serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     // Parse request body
-    const { work_order_id }: NotifyTenantRequest = await req.json()
+    const { work_order_id }: NotifyTenantCompletionRequest = await req.json()
 
     if (!work_order_id) {
       return new Response(
@@ -43,7 +42,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('Fetching work order details for tenant notification:', work_order_id)
+    console.log('Fetching work order details for completion notification:', work_order_id)
 
     // Fetch work order with related data
     const { data: workOrder, error: workOrderError } = await supabaseAdmin
@@ -71,6 +70,14 @@ serve(async (req) => {
       )
     }
 
+    // Verify work order is completed
+    if (workOrder.status !== 'Completed') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Work order is not completed' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (!workOrder.tenant_id) {
       return new Response(
         JSON.stringify({ success: false, error: 'Work order has no tenant' }),
@@ -95,7 +102,7 @@ serve(async (req) => {
     }
 
     // Fetch technician details (for context in email)
-    let technicianName = 'a technician'
+    let technicianName = 'the technician'
     if (workOrder.technician_id) {
       const { data: technician } = await supabaseAdmin
         .from('users')
@@ -143,7 +150,8 @@ serve(async (req) => {
     }
 
     // Determine deep link for mobile app
-    // Use web URL format for better email client compatibility (matches working Dec 3 emails)
+    // OLD WORKING FORMAT (Dec 3): http://localhost:8081/work-order/{id}
+    // Use web URL in test mode for better email client compatibility
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
     const isTestMode = stripeSecretKey.startsWith('sk_test_')
     
@@ -165,12 +173,12 @@ serve(async (req) => {
     // Always use web URL format (matches old working emails)
     // Web URLs work better in email clients and can redirect to app via Android App Links
     const workOrderLink = `${TENANT_APP_URL}/work-order/${work_order_id}`
-    
-    console.log('=== Tenant Assignment Link (Web URL Format) ===')
+
+    console.log('=== Work Order Completion Link (Web URL Format) ===')
     console.log('TENANT_APP_URL:', TENANT_APP_URL)
     console.log('isTestMode:', isTestMode)
     console.log('Generated work order link:', workOrderLink)
-    console.log('================================================')
+    console.log('==================================================')
 
     // Build email content
     const workOrderTitle = workOrder.title || workOrder.description || 'Your Work Order'
@@ -180,27 +188,31 @@ serve(async (req) => {
     const htmlBody = `
       <html>
         <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 20px;">Work Order Update</h2>
+          <h2 style="color: #059669; margin-bottom: 20px;">Work Order Completed! ✅</h2>
           <p>Hi ${tenant.name},</p>
-          <p>Good news! A technician has been assigned to your work order:</p>
+          <p>Great news! Your work order has been completed:</p>
           
-          <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+          <div style="background: #f0fdf4; border-left: 4px solid #059669; padding: 16px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0 0 8px 0;"><strong>Title:</strong> ${workOrderTitle}</p>
             ${workOrder.description ? `<p style="margin: 0 0 8px 0;"><strong>Description:</strong> ${workOrder.description}</p>` : ''}
             <p style="margin: 0 0 8px 0;"><strong>Priority:</strong> ${priorityLabel}</p>
             <p style="margin: 0 0 8px 0;"><strong>Property:</strong> ${propertyName}${unitInfo}</p>
-            <p style="margin: 0 0 8px 0;"><strong>Assigned Technician:</strong> ${technicianName}</p>
-            <p style="margin: 0;"><strong>Status:</strong> ${workOrder.status || 'In Progress'}</p>
+            <p style="margin: 0 0 8px 0;"><strong>Completed by:</strong> ${technicianName}</p>
+            <p style="margin: 0;"><strong>Status:</strong> <span style="color: #059669; font-weight: bold;">Completed</span></p>
           </div>
 
           <p style="margin: 24px 0;">
-            <a href="${workOrderLink}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-              View Work Order
+            <a href="${workOrderLink}" style="display: inline-block; background: #059669; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+              View Completed Work Order
             </a>
+          </p>
+          
+          <p style="color: #666; font-size: 12px; margin-top: 16px;">
+            If the button doesn't work, copy and paste this link: ${workOrderLink}
           </p>
 
           <p style="color: #666; font-size: 14px; margin-top: 30px;">
-            The technician will begin working on your request soon. You can track the progress and communicate with them through the work order.
+            Thank you for using our service. If you have any questions or concerns about the completed work, please don't hesitate to reach out.
           </p>
 
           <p style="margin-top: 32px;">Best regards,<br/>The Asine Team</p>
@@ -210,17 +222,17 @@ serve(async (req) => {
 
     const textBody = `Hi ${tenant.name},
 
-Good news! A technician has been assigned to your work order:
+Great news! Your work order has been completed:
 
 Title: ${workOrderTitle}
 ${workOrder.description ? `Description: ${workOrder.description}\n` : ''}Priority: ${priorityLabel}
 Property: ${propertyName}${unitInfo}
-Assigned Technician: ${technicianName}
-Status: ${workOrder.status || 'In Progress'}
+Completed by: ${technicianName}
+Status: Completed
 
-View the work order: ${workOrderLink}
+View the completed work order: ${workOrderLink}
 
-The technician will begin working on your request soon. You can track the progress and communicate with them through the work order.
+Thank you for using our service. If you have any questions or concerns about the completed work, please don't hesitate to reach out.
 
 Best regards,
 The Asine Team`
@@ -234,11 +246,11 @@ The Asine Team`
     const formData = new FormData()
     formData.append('from', `Asine Work Orders <noreply@${MAILGUN_DOMAIN}>`)
     formData.append('to', tenant.email)
-    formData.append('subject', `Technician Assigned: ${workOrderTitle}`)
+    formData.append('subject', `Work Order Completed: ${workOrderTitle}`)
     formData.append('html', htmlBody)
     formData.append('text', textBody)
 
-    console.log('Sending assignment notification email to tenant:', tenant.email)
+    console.log('Sending completion notification email to tenant:', tenant.email)
 
     const mailgunResponse = await fetch(mailgunUrl, {
       method: 'POST',
@@ -250,11 +262,11 @@ The Asine Team`
 
     if (!mailgunResponse.ok) {
       const mailgunResult = await mailgunResponse.json().catch(() => ({}))
-      console.error('Mailgun error sending tenant notification email:', mailgunResult)
+      console.error('Mailgun error sending completion notification email:', mailgunResult)
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Failed to send notification email',
+          error: 'Failed to send completion notification email',
           details: mailgunResult.message || mailgunResponse.statusText
         }),
         { status: mailgunResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -263,12 +275,12 @@ The Asine Team`
 
     const mailgunResult = await mailgunResponse.json().catch(() => ({}))
 
-    console.log('Tenant notification email sent successfully:', mailgunResult.id)
+    console.log('Completion notification email sent successfully:', mailgunResult.id)
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Assignment notification sent to tenant',
+        message: 'Completion notification sent to tenant',
         tenant_email: tenant.email,
         work_order_id: work_order_id,
         mailgun_id: mailgunResult.id,
@@ -277,7 +289,7 @@ The Asine Team`
     )
 
   } catch (error) {
-    console.error('Error in notify-tenant-assignment:', error)
+    console.error('Error in notify-tenant-completion:', error)
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -287,4 +299,5 @@ The Asine Team`
     )
   }
 })
+
 

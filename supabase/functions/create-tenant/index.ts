@@ -402,6 +402,37 @@ serve(async (req) => {
 
     console.log('✅ Tenant created successfully:', userData?.id || authUserId)
 
+    // Step 4.5: Notify PM about new tenant signup (non-blocking)
+    try {
+      console.log('Notifying PM about new tenant signup')
+      const notifyPMResponse = await fetch(`${supabaseUrl}/functions/v1/notify-pm-signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+        },
+        body: JSON.stringify({
+          property_id: finalPropertyId,
+          user_name: name,
+          user_email: email,
+          user_role: 'tenant',
+          unit_number: unit_number || undefined,
+        }),
+      })
+      
+      if (notifyPMResponse.ok) {
+        const pmNotifyResult = await notifyPMResponse.json().catch(() => ({}))
+        console.log('✅ PM notification sent:', pmNotifyResult)
+      } else {
+        const pmNotifyError = await notifyPMResponse.text().catch(() => 'Unknown error')
+        console.warn('⚠️ PM notification failed (non-critical):', pmNotifyError)
+      }
+    } catch (pmNotifyError) {
+      console.warn('⚠️ PM notification error (non-critical):', pmNotifyError)
+      // Continue - PM notification failure shouldn't block tenant creation
+    }
+
     // Step 5: Generate verification link and send custom verification email
     console.log('Step 5: Sending verification email to tenant')
     

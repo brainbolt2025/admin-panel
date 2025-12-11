@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Search, Wrench, Mail, Check, X as XIcon, Calendar, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, Wrench, Mail, Check, X as XIcon, Calendar, ChevronDown, Camera, Info, MapPin, Shield, Clock } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+
+const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
 interface Technician {
   id: string;
@@ -11,6 +13,9 @@ interface Technician {
   role: string | null;
   approved: boolean | null;
   created_at?: string;
+  profile_picture_url?: string | null;
+  property_name?: string | null;
+  email_verified?: boolean | null;
 }
 
 const Technicians = () => {
@@ -49,6 +54,16 @@ const Technicians = () => {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
   const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null);
+
+  // State for details modal
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [technicianDetails, setTechnicianDetails] = useState<Technician | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // State for profile picture upload
+  const [uploadingProfilePicture, setUploadingProfilePicture] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
 
   const { setPendingTechniciansCount, refreshPendingTechniciansCount } = usePendingWorkOrders();
 
@@ -90,7 +105,7 @@ const Technicians = () => {
       // Fetch all technicians from the same property
       const { data: techniciansData, error: techniciansError } = await supabaseClient
         .from('users')
-        .select('id, name, email, role, approved, created_at')
+        .select('id, name, email, role, approved, created_at, profile_picture_url, property_name, email_verified')
         .eq('property_id', pmData.property_id)
         .eq('role', 'technician')
         .order('created_at', { ascending: false });
@@ -113,8 +128,31 @@ const Technicians = () => {
         role: technician.role,
         approved: technician.approved,
         created_at: technician.created_at,
+        profile_picture_url: technician.profile_picture_url,
+        property_name: technician.property_name,
+        email_verified: technician.email_verified,
       }));
 
+      // Fetch profile picture URLs for technicians with profile pictures
+      const urlsMap: Record<string, string> = {};
+      await Promise.all(
+        transformedData
+          .filter((t) => t.profile_picture_url)
+          .map(async (technician) => {
+            try {
+              const { data: signedData, error: signedError } = await supabaseClient.storage
+                .from(PROFILE_PICTURES_BUCKET)
+                .createSignedUrl(technician.profile_picture_url!, 60 * 60 * 24); // 24 hours
+
+              if (!signedError && signedData?.signedUrl) {
+                urlsMap[technician.id] = signedData.signedUrl;
+              }
+            } catch (err) {
+              console.error(`Error fetching profile picture for technician ${technician.id}:`, err);
+            }
+          })
+      );
+      setProfilePictureUrls(urlsMap);
       setTechnicians(transformedData);
       const pendingCount = transformedData.filter((tech) => !tech.approved).length;
       setPendingTechniciansCount(pendingCount);
@@ -145,6 +183,141 @@ const Technicians = () => {
     return matchesSearch && matchesStatus;
   });
 
+  // Handle profile picture upload
+  const handleProfilePictureUpload = async (technicianId: string, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
+    setUploadingProfilePicture(technicianId);
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `technician_${technicianId}_${Date.now()}.${fileExt}`;
+      const filePath = fileName;
+
+      // Upload to storage
+      const { error: uploadError } = await supabaseClient.storage
+        .from(PROFILE_PICTURES_BUCKET)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Update user record with profile picture URL
+      const { error: updateError } = await supabaseClient
+        .from('users')
+        .update({ profile_picture_url: filePath })
+        .eq('id', technicianId);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Get signed URL for the new image
+      const { data: signedData, error: signedError } = await supabaseClient.storage
+        .from(PROFILE_PICTURES_BUCKET)
+        .createSignedUrl(filePath, 60 * 60 * 24);
+
+      if (!signedError && signedData?.signedUrl) {
+        setProfilePictureUrls((prev) => ({
+          ...prev,
+          [technicianId]: signedData.signedUrl,
+        }));
+      }
+
+      // Refresh technicians list
+      await fetchTechnicians();
+    } catch (err: any) {
+      console.error('Error uploading profile picture:', err);
+      alert('Failed to upload profile picture. Please try again.');
+    } finally {
+      setUploadingProfilePicture(null);
+    }
+  };
+
+  // Handle file input change
+  const handleFileInputChange = (technicianId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleProfilePictureUpload(technicianId, file);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Handle view details
+  const handleViewDetails = async (technician: Technician) => {
+    setLoadingDetails(true);
+    setDetailsModalOpen(true);
+    
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      
+      // Fetch full technician details
+      const { data: technicianData, error } = await supabaseClient
+        .from('users')
+        .select('id, name, email, role, approved, created_at, profile_picture_url, property_name, email_verified')
+        .eq('id', technician.id)
+        .single();
+
+      if (error) throw error;
+
+      const fullTechnician: Technician = {
+        id: technicianData.id,
+        name: technicianData.name,
+        email: technicianData.email,
+        role: technicianData.role,
+        approved: technicianData.approved,
+        created_at: technicianData.created_at,
+        profile_picture_url: technicianData.profile_picture_url,
+        property_name: technicianData.property_name,
+        email_verified: technicianData.email_verified,
+      };
+
+      // Get profile picture URL if available
+      if (fullTechnician.profile_picture_url) {
+        try {
+          const { data: signedData, error: signedError } = await supabaseClient.storage
+            .from(PROFILE_PICTURES_BUCKET)
+            .createSignedUrl(fullTechnician.profile_picture_url, 60 * 60 * 24);
+
+          if (!signedError && signedData?.signedUrl) {
+            setProfilePictureUrls((prev) => ({
+              ...prev,
+              [fullTechnician.id]: signedData.signedUrl,
+            }));
+          }
+        } catch (err) {
+          console.error('Error fetching profile picture:', err);
+        }
+      }
+
+      setTechnicianDetails(fullTechnician);
+    } catch (err: any) {
+      console.error('Error fetching technician details:', err);
+      alert('Failed to load technician details. Please try again.');
+      setDetailsModalOpen(false);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
   // Format date
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'N/A';
@@ -153,6 +326,19 @@ const Technicians = () => {
       year: 'numeric', 
       month: 'short', 
       day: 'numeric' 
+    });
+  };
+
+  // Format date for details (full format)
+  const formatDateFull = (dateString: string | undefined) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -373,8 +559,37 @@ const Technicians = () => {
                   <tr key={technician.id} className="hover:bg-gray-50">
                     <td className="py-4 px-6">
                       <div className="flex items-center">
-                        <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center mr-3">
-                          <Wrench className="w-5 h-5 text-teal-600" />
+                        <div className="relative group">
+                          {profilePictureUrls[technician.id] ? (
+                            <img
+                              src={profilePictureUrls[technician.id]}
+                              alt={technician.name || 'Technician'}
+                              className="w-10 h-10 rounded-full object-cover mr-3"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center mr-3">
+                              <Wrench className="w-5 h-5 text-teal-600" />
+                            </div>
+                          )}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleFileInputChange(technician.id, e)}
+                            id={`profile-upload-${technician.id}`}
+                          />
+                          <label
+                            htmlFor={`profile-upload-${technician.id}`}
+                            className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full cursor-pointer transition-opacity opacity-0 group-hover:opacity-100"
+                            title="Upload profile picture"
+                          >
+                            {uploadingProfilePicture === technician.id ? (
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                              <Camera className="w-4 h-4 text-white" />
+                            )}
+                          </label>
                         </div>
                         <div className="text-sm font-medium text-gray-900">
                           {technician.name || 'N/A'}
@@ -405,6 +620,13 @@ const Technicians = () => {
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleViewDetails(technician)}
+                          className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+                        >
+                          <Info className="w-3 h-3" />
+                          Details
+                        </button>
                         {!technician.approved ? (
                           <>
                             <button
@@ -512,6 +734,150 @@ const Technicians = () => {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {detailsModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {loadingDetails ? (
+              <div className="p-12 text-center">
+                <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading details...</p>
+              </div>
+            ) : technicianDetails ? (
+              <>
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                  <h2 className="text-2xl font-bold text-gray-900">Technician Details</h2>
+                  <button
+                    onClick={() => {
+                      setDetailsModalOpen(false);
+                      setTechnicianDetails(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XIcon className="w-6 h-6" />
+                  </button>
+                </div>
+
+                {/* Modal Content */}
+                <div className="p-6">
+                  <div className="flex flex-col md:flex-row gap-6 mb-6">
+                    {/* Profile Picture */}
+                    <div className="flex-shrink-0">
+                      {profilePictureUrls[technicianDetails.id] ? (
+                        <img
+                          src={profilePictureUrls[technicianDetails.id]}
+                          alt={technicianDetails.name || 'Technician'}
+                          className="w-32 h-32 rounded-full object-cover border-4 border-teal-100"
+                        />
+                      ) : (
+                        <div className="w-32 h-32 bg-teal-100 rounded-full flex items-center justify-center border-4 border-teal-200">
+                          <Wrench className="w-16 h-16 text-teal-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Basic Info */}
+                    <div className="flex-1">
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                        {technicianDetails.name || 'N/A'}
+                      </h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center text-gray-600">
+                          <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                          <span>{technicianDetails.email || 'N/A'}</span>
+                          {technicianDetails.email_verified && (
+                            <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                              Verified
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center text-gray-600">
+                          <Shield className="w-4 h-4 mr-2 text-gray-400" />
+                          <span className="capitalize">{technicianDetails.role || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center">
+                          {technicianDetails.approved ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
+                              <Check className="w-4 h-4" />
+                              Approved
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-md text-sm font-medium">
+                              <Calendar className="w-4 h-4" />
+                              Pending Approval
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detailed Information */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-gray-200">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                          Property
+                        </label>
+                        <div className="flex items-center text-gray-900">
+                          <MapPin className="w-4 h-4 mr-2 text-gray-400" />
+                          <span>{technicianDetails.property_name || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                          Account Created
+                        </label>
+                        <div className="flex items-center text-gray-900">
+                          <Clock className="w-4 h-4 mr-2 text-gray-400" />
+                          <span>{formatDateFull(technicianDetails.created_at)}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                          User ID
+                        </label>
+                        <div className="text-gray-900 font-mono text-sm break-all">
+                          {technicianDetails.id}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+                  <button
+                    onClick={() => {
+                      setDetailsModalOpen(false);
+                      setTechnicianDetails(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                  {!technicianDetails.approved && (
+                    <button
+                      onClick={() => {
+                        setDetailsModalOpen(false);
+                        handleApproveClick(technicianDetails);
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <Check className="w-4 h-4 inline mr-2" />
+                      Approve Technician
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}

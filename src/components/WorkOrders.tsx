@@ -88,6 +88,11 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
 
+  // State for reopen confirmation modal
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [workOrderToReopen, setWorkOrderToReopen] = useState<WorkOrder | null>(null);
+  const [reopening, setReopening] = useState(false);
+
   const { setPendingCount, setRefreshWorkOrdersList } = usePendingWorkOrders();
   useEffect(() => {
     const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
@@ -539,14 +544,16 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     setAssignedTechnician(null);
     setMediaFiles([]);
     setMediaError(null);
+    setLoadingAssignedTechnician(true);
+    
+    // Fetch media files
     fetchWorkOrderMedia(workOrder.id);
 
+    // If no technician assigned, just show work order details and media
     if (!workOrder.technician_id) {
       setLoadingAssignedTechnician(false);
       return;
     }
-
-    setLoadingAssignedTechnician(true);
 
     try {
       const supabaseClient = getAuthenticatedSupabase();
@@ -558,13 +565,17 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         .eq('id', workOrder.technician_id)
         .single();
 
-      if (error) throw error;
-
-      setAssignedTechnician(data);
+      if (error) {
+        // Don't close the dialog if technician fetch fails - still show work order info
+        console.error('Error fetching technician:', error);
+        setAssignedTechnician(null);
+      } else {
+        setAssignedTechnician(data);
+      }
     } catch (err: any) {
+      // Don't close the dialog if technician fetch fails - still show work order info
       console.error('Error fetching technician:', err);
-      alert('Failed to load technician information. Please try again.');
-      setViewDialogOpen(false);
+      setAssignedTechnician(null);
     } finally {
       setLoadingAssignedTechnician(false);
     }
@@ -580,8 +591,18 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     setLoadingMedia(false);
   };
 
-  // Handle reopen button click
-  const handleReopenClick = async (workOrder: WorkOrder) => {
+  // Handle reopen button click - shows confirmation modal
+  const handleReopenClick = (workOrder: WorkOrder) => {
+    setWorkOrderToReopen(workOrder);
+    setReopenModalOpen(true);
+  };
+
+  // Handle reopen confirmation
+  const handleReopenConfirm = async () => {
+    if (!workOrderToReopen) return;
+
+    setReopening(true);
+    
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
@@ -589,7 +610,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       const { error } = await supabaseClient
         .from('work_orders')
         .update({ status: 'In Progress' })
-        .eq('id', workOrder.id);
+        .eq('id', workOrderToReopen.id);
 
       if (error) {
         console.error('Update error details:', error);
@@ -620,10 +641,22 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       const transformedData = transformWorkOrders(ordersData);
 
       setWorkOrders(transformedData);
+
+      // Close modal and reset
+      setReopenModalOpen(false);
+      setWorkOrderToReopen(null);
     } catch (err: any) {
       console.error('Error reopening work order:', err);
       alert('Failed to reopen work order. Please try again.');
+    } finally {
+      setReopening(false);
     }
+  };
+
+  // Handle close reopen modal
+  const handleCloseReopenModal = () => {
+    setReopenModalOpen(false);
+    setWorkOrderToReopen(null);
   };
 
   // Handle complete button click
@@ -640,6 +673,38 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       if (error) {
         console.error('Update error details:', error);
         throw error;
+      }
+
+      // Send completion notification email to tenant
+      if (workOrder.tenant_id) {
+        try {
+          const accessToken = localStorage.getItem('access_token');
+          const response = await fetch(
+            `${config.supabase.url}/functions/v1/notify-tenant-completion`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': accessToken ? `Bearer ${accessToken}` : `Bearer ${config.supabase.anonKey}`,
+                'apikey': config.supabase.anonKey,
+              },
+              body: JSON.stringify({
+                work_order_id: workOrder.id,
+              }),
+            }
+          );
+
+          const result = await response.json();
+          if (!response.ok) {
+            console.error('Failed to send completion email:', result);
+            // Don't fail the completion if email fails - just log it
+          } else if (result.success) {
+            console.log('Completion email sent successfully to tenant');
+          }
+        } catch (emailError) {
+          console.error('Error calling notify-tenant-completion function:', emailError);
+          // Don't fail the completion if email fails - just log it
+        }
       }
 
       // Refresh work orders list
@@ -673,7 +738,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   };
 
   return (
-    <div className="p-6">
+    <div className="p-6 w-full">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Work Orders</h1>
 
       {/* Search and Filters */}
@@ -724,7 +789,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       </div>
 
       {/* Work Orders Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden w-full">
         {loadingWorkOrders ? (
           <div className="text-center py-12">
             <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -747,17 +812,17 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[1200px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-2/5 min-w-[300px]">Title</th>
-                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/12 min-w-[80px]">Unit</th>
-                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/6 min-w-[100px]">Tenant</th>
-                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[100px]">Priority</th>
-                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[120px]">Status</th>
-                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/4 min-w-[200px]">Actions</th>
-                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase w-1/8 min-w-[120px]">Created At</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Title</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Unit</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Tenant</th>
+                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Priority</th>
+                  <th className="text-center py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Status</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Actions</th>
+                  <th className="text-left py-3 px-4 md:px-6 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">Created At</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -767,13 +832,13 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                   return (
                     <tr key={order.id} className="hover:bg-gray-50 transition-colors duration-150">
                       <td className="py-3 px-4 md:px-6">
-                        <div className="text-sm font-medium text-gray-900">{order.title}</div>
+                        <div className="text-sm font-medium text-gray-900 break-words max-w-xs">{order.title || 'N/A'}</div>
                         {order.description && (
-                          <div className="text-xs text-gray-500 mt-0.5">{order.description}</div>
+                          <div className="text-xs text-gray-500 mt-0.5 break-words max-w-xs line-clamp-2">{order.description}</div>
                         )}
                       </td>
-                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{order.unit_number || 'N/A'}</td>
-                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{order.tenant_name}</td>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600 whitespace-nowrap">{order.unit_number || 'N/A'}</td>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600 whitespace-nowrap">{order.tenant_name}</td>
                       <td className="py-3 px-4 md:px-6">
                         <div className="flex justify-center">
                           <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
@@ -791,7 +856,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                         </div>
                       </td>
                       <td className="py-3 px-4 md:px-6">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap min-w-[200px]">
                           {order.status === 'Pending' && (
                             <>
                               <button 
@@ -851,7 +916,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600">{formatDate(order.created_at)}</td>
+                      <td className="py-3 px-4 md:px-6 text-sm text-gray-600 whitespace-nowrap">{formatDate(order.created_at)}</td>
                     </tr>
                   );
                 })}
@@ -972,13 +1037,13 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         </div>
       )}
 
-      {/* View Technician Dialog */}
+      {/* View Work Order Details Dialog */}
       {viewDialogOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full mx-4 my-8 p-6">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Technician Information</h2>
+              <h2 className="text-xl font-bold text-gray-900">Work Order Details</h2>
               <button
                 onClick={handleCloseViewDialog}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -989,47 +1054,77 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
 
             {/* Work Order Info */}
             {selectedWorkOrder && (
-              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm font-medium text-gray-900">{selectedWorkOrder.title}</p>
-                {selectedWorkOrder.description && (
-                  <p className="text-xs text-gray-600 mt-1">{selectedWorkOrder.description}</p>
-                )}
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <p className="text-base font-semibold text-gray-900 mb-1">{selectedWorkOrder.title}</p>
+                    {selectedWorkOrder.description && (
+                      <p className="text-sm text-gray-600 mt-1">{selectedWorkOrder.description}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
+                  <div>
+                    <span className="text-xs font-medium text-gray-500">Status:</span>
+                    <span className={`ml-2 text-xs font-medium ${selectedWorkOrder.status === 'Completed' ? 'text-green-700' : selectedWorkOrder.status === 'In Progress' ? 'text-blue-700' : selectedWorkOrder.status === 'Pending' ? 'text-orange-700' : 'text-gray-700'}`}>
+                      {selectedWorkOrder.status || 'N/A'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-gray-500">Priority:</span>
+                    <span className="ml-2 text-xs font-medium text-gray-700">{selectedWorkOrder.priority || 'N/A'}</span>
+                  </div>
+                  {selectedWorkOrder.unit_number && (
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Unit:</span>
+                      <span className="ml-2 text-xs font-medium text-gray-700">{selectedWorkOrder.unit_number}</span>
+                    </div>
+                  )}
+                  {selectedWorkOrder.tenant_name && (
+                    <div>
+                      <span className="text-xs font-medium text-gray-500">Tenant:</span>
+                      <span className="ml-2 text-xs font-medium text-gray-700">{selectedWorkOrder.tenant_name}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Loading State */}
+            {/* Technician Information Section */}
             {loadingAssignedTechnician ? (
-              <div className="py-8 text-center">
+              <div className="py-6 text-center border border-gray-200 rounded-lg mb-4">
                 <div className="w-8 h-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                 <p className="text-gray-500 text-sm">Loading technician information...</p>
               </div>
             ) : assignedTechnician ? (
-              <div className="space-y-4">
-                {/* Technician Info Card */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Assigned Technician</h3>
                 <div className="p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center mb-4">
-                    <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mr-4">
-                      <Wrench className="w-8 h-8 text-teal-600" />
+                  <div className="flex items-center mb-3">
+                    <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mr-3">
+                      <Wrench className="w-6 h-6 text-teal-600" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-lg font-semibold text-gray-900">{assignedTechnician.name}</p>
+                      <p className="text-base font-semibold text-gray-900">{assignedTechnician.name}</p>
                       <p className="text-sm text-gray-500">Technician</p>
                     </div>
                   </div>
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center">
-                        <span className="text-sm font-medium text-gray-700 w-20">Email:</span>
-                        <span className="text-sm text-gray-900">{assignedTechnician.email}</span>
-                      </div>
+                  <div className="border-t border-gray-200 pt-3">
+                    <div className="flex items-center">
+                      <span className="text-sm font-medium text-gray-700 w-20">Email:</span>
+                      <span className="text-sm text-gray-900">{assignedTechnician.email}</span>
                     </div>
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="py-8 text-center">
+            ) : selectedWorkOrder?.technician_id ? (
+              <div className="py-6 text-center border border-gray-200 rounded-lg mb-4">
                 <Wrench className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No technician information available</p>
+                <p className="text-gray-500 text-sm">Technician information not available</p>
+              </div>
+            ) : (
+              <div className="py-4 px-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                <p className="text-sm text-gray-600">No technician assigned to this work order</p>
               </div>
             )}
 
@@ -1108,6 +1203,71 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
                 className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reopen Work Order Confirmation Modal */}
+      {reopenModalOpen && workOrderToReopen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 p-6">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Reopen Work Order</h2>
+              <button
+                onClick={handleCloseReopenModal}
+                disabled={reopening}
+                className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Confirmation Message */}
+            <div className="mb-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to reopen this work order? The status will be changed to "In Progress".
+              </p>
+              
+              {/* Work Order Info */}
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900 mb-1">{workOrderToReopen.title}</p>
+                {workOrderToReopen.description && (
+                  <p className="text-xs text-gray-600 mt-1 line-clamp-2">{workOrderToReopen.description}</p>
+                )}
+                <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+                  <span>Status: <span className="font-medium text-gray-700">{workOrderToReopen.status}</span></span>
+                  {workOrderToReopen.priority && (
+                    <span>Priority: <span className="font-medium text-gray-700">{workOrderToReopen.priority}</span></span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleCloseReopenModal}
+                disabled={reopening}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReopenConfirm}
+                disabled={reopening}
+                className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {reopening ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Reopening...
+                  </>
+                ) : (
+                  'Confirm Reopen'
+                )}
               </button>
             </div>
           </div>

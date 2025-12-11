@@ -403,6 +403,47 @@ serve(async (req) => {
         break
       }
 
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription
+        const customerId = typeof subscription.customer === 'string' 
+          ? subscription.customer 
+          : subscription.customer?.id
+
+        console.log('Processing customer.subscription.deleted for subscription:', subscription.id)
+
+        if (!customerId) {
+          console.error('Missing customer ID in subscription deletion event')
+          break
+        }
+
+        // Update user record
+        const { error: updateError } = await supabaseAdmin
+          .from('users')
+          .update({ 
+            subscribed: false,
+            subscription_status: 'canceled'
+          })
+          .eq('stripe_customer_id', customerId)
+
+        if (updateError) {
+          console.error('Error updating user subscription status:', updateError)
+        } else {
+          console.log('✅ User subscription status updated to canceled')
+        }
+
+        // Update subscriptions table if it exists
+        try {
+          await supabaseAdmin
+            .from('subscriptions')
+            .update({ status: 'canceled' })
+            .eq('stripe_subscription_id', subscription.id)
+        } catch (err) {
+          console.warn('Could not update subscriptions table:', err)
+        }
+
+        break
+      }
+
       default:
         console.log('Unhandled event type:', event.type)
         return new Response(

@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, Wrench, MessageSquare } from 'lucide-react';
+import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, Wrench, User } from 'lucide-react';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 
 export interface SidebarProps {
@@ -52,7 +52,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
     { id: 'Work Orders', label: 'Work Orders', icon: ClipboardList },
     { id: 'Tenants', label: 'Tenants', icon: Users },
     { id: 'Technicians', label: 'Technicians', icon: Wrench },
-    { id: 'Chat', label: 'Chat', icon: MessageSquare },
+    { id: 'Profile', label: 'Profile', icon: User },
   ];
 
   const navigationItems = isPM ? pmNavigationItems : adminNavigationItems;

@@ -381,6 +381,36 @@ serve(async (req) => {
 
     console.log('Technician created successfully:', userData?.id || authUserId)
 
+    // Step 4.5: Notify PM about new technician signup (non-blocking)
+    try {
+      console.log('Notifying PM about new technician signup')
+      const notifyPMResponse = await fetch(`${supabaseUrl}/functions/v1/notify-pm-signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'apikey': supabaseServiceKey,
+        },
+        body: JSON.stringify({
+          property_id: finalPropertyId,
+          user_name: name,
+          user_email: email,
+          user_role: 'technician',
+        }),
+      })
+      
+      if (notifyPMResponse.ok) {
+        const pmNotifyResult = await notifyPMResponse.json().catch(() => ({}))
+        console.log('✅ PM notification sent:', pmNotifyResult)
+      } else {
+        const pmNotifyError = await notifyPMResponse.text().catch(() => 'Unknown error')
+        console.warn('⚠️ PM notification failed (non-critical):', pmNotifyError)
+      }
+    } catch (pmNotifyError) {
+      console.warn('⚠️ PM notification error (non-critical):', pmNotifyError)
+      // Continue - PM notification failure shouldn't block technician creation
+    }
+
     // Step 5: Generate verification link and send custom verification email
     console.log('Step 5: Sending verification email to technician')
     
@@ -451,18 +481,18 @@ serve(async (req) => {
             actionLink: actionLink.substring(0, 150) + '...',
             note: 'Using Supabase action_link directly for email verification'
           })
-            
-            // Send email using Mailgun
-            const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
-            const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
-            const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
-            
-            if (!MAILGUN_API_KEY) {
-              console.warn('MAILGUN_API_KEY not configured, skipping custom email send')
-              emailError = 'Email service not configured. Supabase default email may be sent.'
-            } else {
-              // Build technician-specific email HTML
-              const htmlBody = `
+          
+          // Send email using Mailgun
+          const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
+          const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
+          const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
+          
+          if (!MAILGUN_API_KEY) {
+            console.warn('MAILGUN_API_KEY not configured, skipping custom email send')
+            emailError = 'Email service not configured. Supabase default email may be sent.'
+          } else {
+            // Build technician-specific email HTML
+            const htmlBody = `
                 <html>
                   <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2 style="color: #0f766e; margin-bottom: 20px;">Welcome to Asine</h2>
@@ -490,9 +520,9 @@ serve(async (req) => {
                     </p>
                   </body>
                 </html>
-              `
-              
-              const textBody = `Welcome to Asine
+            `
+            
+            const textBody = `Welcome to Asine
 
 Hi ${name},
 
@@ -505,42 +535,41 @@ This link expires in 24 hours.
 After verifying your email, your account will be reviewed by your property manager before you can sign in.
 
 If you didn't create an account, please ignore this email.`
-              
-              // Send via Mailgun
-              const mailgunBaseUrl = MAILGUN_REGION === 'eu' 
-                ? 'https://api.eu.mailgun.net/v3'
-                : 'https://api.mailgun.net/v3'
-              const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
-              const authHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
-              
-              const formData = new FormData()
-              formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)
-              formData.append('to', email)
-              formData.append('subject', 'Verify your Asine technician account')
-              formData.append('html', htmlBody)
-              formData.append('text', textBody)
-              
-              const mailgunResponse = await fetch(mailgunUrl, {
-                method: 'POST',
-                headers: {
-                  Authorization: authHeader,
-                },
-                body: formData,
+            
+            // Send via Mailgun
+            const mailgunBaseUrl = MAILGUN_REGION === 'eu' 
+              ? 'https://api.eu.mailgun.net/v3'
+              : 'https://api.mailgun.net/v3'
+            const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
+            const authHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
+            
+            const formData = new FormData()
+            formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)
+            formData.append('to', email)
+            formData.append('subject', 'Verify your Asine technician account')
+            formData.append('html', htmlBody)
+            formData.append('text', textBody)
+            
+            const mailgunResponse = await fetch(mailgunUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: authHeader,
+              },
+              body: formData,
+            })
+            
+            if (mailgunResponse.ok) {
+              const mailgunResult = await mailgunResponse.json()
+              console.log('✅ Verification email sent successfully to:', email)
+              console.log('Mailgun message ID:', mailgunResult.id)
+              emailSent = true
+            } else {
+              const errorText = await mailgunResponse.text().catch(() => 'Unknown error')
+              console.error('Failed to send verification email via Mailgun:', {
+                status: mailgunResponse.status,
+                error: errorText
               })
-              
-              if (mailgunResponse.ok) {
-                const mailgunResult = await mailgunResponse.json()
-                console.log('✅ Verification email sent successfully to:', email)
-                console.log('Mailgun message ID:', mailgunResult.id)
-                emailSent = true
-              } else {
-                const errorText = await mailgunResponse.text().catch(() => 'Unknown error')
-                console.error('Failed to send verification email via Mailgun:', {
-                  status: mailgunResponse.status,
-                  error: errorText
-                })
-                emailError = `Mailgun error: ${mailgunResponse.status} ${errorText}`
-              }
+              emailError = `Mailgun error: ${mailgunResponse.status} ${errorText}`
             }
           }
         }

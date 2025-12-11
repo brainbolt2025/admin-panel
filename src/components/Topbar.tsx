@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Bell, UserPlus, Menu, LogOut, X } from 'lucide-react';
+import { Search, Bell, UserPlus, Menu, X } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 
 interface TopbarProps {
@@ -163,15 +163,6 @@ const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout, onNavigateToWorkOrder 
             <span className="font-medium">New PM Account</span>
           </button>
         )}
-
-        {/* Logout Button */}
-        <button 
-          onClick={onLogout}
-          className="bg-gray-600 text-white px-4 py-2 rounded-full flex items-center gap-2 cursor-pointer hover:bg-gray-700 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="font-medium">Logout</span>
-        </button>
       </div>
 
       {/* Alerts Modal */}
