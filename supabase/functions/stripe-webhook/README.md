@@ -9,6 +9,7 @@ This Supabase Edge Function handles Stripe webhook events to automatically updat
   - `checkout.session.completed` - Payment successful
   - `invoice.paid` - Recurring payment successful
   - `customer.subscription.created` - New subscription started
+  - `customer.subscription.updated` - Subscription updated (cancellation/reactivation)
   - `customer.subscription.deleted` - Subscription cancelled/deleted
 - Updates user records with subscription status
 - Creates subscription tracking records
@@ -80,7 +81,8 @@ https://YOUR_PROJECT.supabase.co/functions/v1/stripe-webhook
    - `checkout.session.completed`
    - `invoice.paid`
    - `customer.subscription.created`
-   - `customer.subscription.deleted` (for cancellation handling)
+   - `customer.subscription.updated` (for cancellation/reactivation handling)
+   - `customer.subscription.deleted` (for final cancellation handling)
 5. Click **Add endpoint**
 6. **Important:** Copy the "Signing secret" (starts with `whsec_...`)
 7. Go back to Supabase and add it as `STRIPE_WEBHOOK_SECRET`
@@ -100,6 +102,9 @@ stripe trigger invoice.paid
 
 # Trigger a test subscription creation
 stripe trigger customer.subscription.created
+
+# Trigger a test subscription update (cancellation/reactivation)
+stripe trigger customer.subscription.updated
 
 # Trigger a test subscription deletion
 stripe trigger customer.subscription.deleted
@@ -149,6 +154,20 @@ When a new subscription is created:
 1. Extracts metadata from the subscription
 2. Updates the user record with subscription details
 
+### Event: `customer.subscription.updated`
+
+When a subscription is updated (e.g., reactivated or scheduled for cancellation):
+
+1. Finds the user by `stripe_customer_id`
+2. Updates `subscription_status` to match Stripe status
+3. Updates `subscribed` based on subscription status
+4. Updates `cancel_at` field:
+   - If `cancel_at_period_end = true`: sets `cancel_at` to the cancellation timestamp
+   - If `cancel_at_period_end = false`: clears `cancel_at` (subscription reactivated)
+5. Updates the `subscriptions` table status
+
+This handles both cancellation scheduling and reactivation automatically.
+
 ### Event: `customer.subscription.deleted`
 
 When a subscription is cancelled or deleted:
@@ -156,7 +175,8 @@ When a subscription is cancelled or deleted:
 1. Finds the user by `stripe_customer_id`
 2. Updates `subscribed = false`
 3. Updates `subscription_status = 'canceled'`
-4. Updates the `subscriptions` table status to `'canceled'`
+4. Clears `cancel_at` field
+5. Updates the `subscriptions` table status to `'canceled'`
 
 ## Security
 

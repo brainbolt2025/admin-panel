@@ -9,10 +9,6 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
-interface CancelSubscriptionRequest {
-  cancel_immediately?: boolean // If true, cancel now. If false, cancel at period end
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -60,13 +56,13 @@ serve(async (req) => {
       )
     }
 
-    // Check user role - only PMs can cancel subscriptions
+    // Check user role - only PMs can reactivate subscriptions
     const userRole = user.user_metadata?.role || user.app_metadata?.role
     if (userRole !== 'pm') {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Unauthorized. Only property managers can cancel subscriptions.' 
+          error: 'Unauthorized. Only property managers can reactivate subscriptions.' 
         }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
@@ -75,7 +71,7 @@ serve(async (req) => {
     // Get user's subscription info from database
     const { data: userData, error: userDataError } = await supabaseAdmin
       .from('users')
-      .select('id, stripe_customer_id, subscription_status')
+      .select('id, stripe_customer_id, subscription_status, cancel_at')
       .eq('id', user.id)
       .single()
 
@@ -88,14 +84,14 @@ serve(async (req) => {
 
     if (!userData.stripe_customer_id) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No active subscription found' }),
+        JSON.stringify({ success: false, error: 'No subscription found' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    if (userData.subscription_status !== 'active') {
+    if (!userData.cancel_at) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No active subscription to cancel' }),
+        JSON.stringify({ success: false, error: 'Subscription is not scheduled for cancellation' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -143,10 +139,6 @@ serve(async (req) => {
       stripeSubscriptionId = subscriptionData.stripe_subscription_id
     }
 
-    // Parse request body
-    const body: CancelSubscriptionRequest = await req.json()
-    const cancelImmediately = body.cancel_immediately ?? false
-
     // Initialize Stripe
     const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
     if (!stripeSecretKey) {
@@ -158,29 +150,18 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' })
 
-    // Cancel subscription in Stripe
-    let cancelledSubscription
-    if (cancelImmediately) {
-      cancelledSubscription = await stripe.subscriptions.cancel(stripeSubscriptionId)
-    } else {
-      cancelledSubscription = await stripe.subscriptions.update(stripeSubscriptionId, {
-        cancel_at_period_end: true,
-      })
-    }
+    // Reactivate subscription in Stripe (remove cancel_at_period_end flag)
+    const reactivatedSubscription = await stripe.subscriptions.update(stripeSubscriptionId, {
+      cancel_at_period_end: false,
+    })
 
-    // Convert cancel_at Unix timestamp to ISO string for PostgreSQL
-    // cancel_at is in seconds, convert to milliseconds for Date
-    const cancelAtTimestamp = cancelledSubscription.cancel_at
-      ? new Date(cancelledSubscription.cancel_at * 1000).toISOString()
-      : null
-
-    // Update database
+    // Update database - clear cancel_at and ensure status is active
     await supabaseAdmin
       .from('users')
       .update({ 
-        subscription_status: cancelImmediately ? 'canceled' : 'active',
-        subscribed: !cancelImmediately, // Keep subscribed if canceling at period end
-        cancel_at: cancelImmediately ? null : cancelAtTimestamp, // Store cancellation date or clear it
+        subscription_status: 'active',
+        subscribed: true,
+        cancel_at: null, // Clear cancellation date
       })
       .eq('id', user.id)
 
@@ -190,7 +171,7 @@ serve(async (req) => {
         await supabaseAdmin
           .from('subscriptions')
           .update({ 
-            status: cancelImmediately ? 'canceled' : 'active',
+            status: 'active',
           })
           .eq('stripe_subscription_id', stripeSubscriptionId)
       } catch (err) {
@@ -198,21 +179,18 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Subscription ${stripeSubscriptionId} cancelled by PM ${user.id} (immediately: ${cancelImmediately})`)
+    console.log(`Subscription ${stripeSubscriptionId} reactivated by PM ${user.id}`)
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: cancelImmediately 
-          ? 'Subscription cancelled immediately' 
-          : 'Subscription will be cancelled at the end of the billing period',
-        cancelled_immediately: cancelImmediately,
-        subscription_status: cancelledSubscription.status,
+        message: 'Subscription reactivated successfully',
+        subscription_status: reactivatedSubscription.status,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (error) {
-    console.error('Error in cancel-subscription:', error)
+    console.error('Error in reactivate-subscription:', error)
     return new Response(
       JSON.stringify({
         success: false,

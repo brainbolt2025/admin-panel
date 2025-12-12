@@ -11,6 +11,7 @@ import Users from './components/Users'
 import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
 import Profile from './components/Profile'
+import SubscriptionCancellationBanner from './components/SubscriptionCancellationBanner'
 import { getAuthenticatedSupabase, supabase } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 
@@ -59,6 +60,7 @@ function App() {
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [cancelAt, setCancelAt] = useState<string | null>(null)
   const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
   const [pendingTechniciansCount, setPendingTechniciansCount] = useState(0)
   const [pendingTenantsCount, setPendingTenantsCount] = useState(0)
@@ -109,7 +111,7 @@ function App() {
       const supabaseClient = getAuthenticatedSupabase()
       const { data: profile, error } = await supabaseClient
         .from('users')
-        .select('id, email, name, role, approved, property_id, property_name')
+        .select('id, email, name, role, approved, property_id, property_name, cancel_at')
         .eq('id', userId)
         .maybeSingle()
 
@@ -119,11 +121,13 @@ function App() {
 
       if (profile) {
         setUserProfile(profile)
+        setCancelAt(profile.cancel_at || null)
         syncLocalStorageUser(profile)
         return profile
       }
 
       setUserProfile(null)
+      setCancelAt(null)
       return null
     },
     [syncLocalStorageUser]
@@ -134,6 +138,7 @@ function App() {
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     setUserProfile(null)
+    setCancelAt(null)
   }, [])
 
   const fetchPendingWorkOrdersCount = useCallback(async () => {
@@ -400,11 +405,39 @@ function App() {
         }
       })
 
+    // Subscribe to current user's cancel_at changes (for PMs)
+    const userCancellationChannel = supabaseClient
+      .channel('user_cancellation_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${userProfile.id}`,
+        },
+        (payload) => {
+          const newRecord = payload.new as any
+          if (newRecord?.cancel_at !== undefined) {
+            console.log('User cancellation status changed, updating cancel_at')
+            setCancelAt(newRecord.cancel_at || null)
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Real-time subscription active for user cancellation status')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.log('Real-time not available for cancellation status')
+        }
+      })
+
     // Cleanup on unmount or when dependencies change
     return () => {
       // clearInterval(pollInterval) // COMMENTED OUT - polling disabled for testing
       supabaseClient.removeChannel(workOrdersChannel)
       supabaseClient.removeChannel(techniciansChannel)
+      supabaseClient.removeChannel(userCancellationChannel)
     }
   }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount, refreshWorkOrdersList])
 
@@ -597,6 +630,7 @@ const pendingWorkOrdersContextValue = useMemo(
             onLogout={handleLogout}
             onNavigateToWorkOrder={handleNavigateToWorkOrder}
           />
+          {userProfile?.role === 'pm' && <SubscriptionCancellationBanner cancelAt={cancelAt} />}
           <main className="flex-1">
             {renderContent()}
           </main>

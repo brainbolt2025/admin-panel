@@ -37,6 +37,9 @@ export const config = {
       : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-subscription',
     cancelSubscription: isDevelopment
       ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/cancel-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/cancel-subscription'
+      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/cancel-subscription',
+    reactivateSubscription: isDevelopment
+      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/reactivate-subscription'
+      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/reactivate-subscription'
   }
 }

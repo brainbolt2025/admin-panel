@@ -403,6 +403,80 @@ serve(async (req) => {
         break
       }
 
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription
+        const customerId = typeof subscription.customer === 'string' 
+          ? subscription.customer 
+          : subscription.customer?.id
+
+        console.log('Processing customer.subscription.updated for subscription:', subscription.id)
+        console.log('Subscription details:', {
+          id: subscription.id,
+          status: subscription.status,
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          cancel_at: subscription.cancel_at,
+        })
+
+        if (!customerId) {
+          console.error('Missing customer ID in subscription update event')
+          break
+        }
+
+        // Convert cancel_at Unix timestamp to ISO string for PostgreSQL (if set)
+        // cancel_at is in seconds, convert to milliseconds for Date
+        const cancelAtTimestamp = subscription.cancel_at
+          ? new Date(subscription.cancel_at * 1000).toISOString()
+          : null
+
+        // Determine subscription status and subscribed flag
+        const isActive = subscription.status === 'active'
+        const isCancelingAtPeriodEnd = subscription.cancel_at_period_end === true
+        
+        // Update user record based on subscription state
+        const updateData: any = {
+          subscription_status: subscription.status,
+          subscribed: isActive,
+        }
+
+        // Update cancel_at field based on subscription state
+        if (isCancelingAtPeriodEnd && cancelAtTimestamp) {
+          // Subscription is scheduled for cancellation
+          updateData.cancel_at = cancelAtTimestamp
+        } else {
+          // Subscription is not scheduled for cancellation (reactivated or never was)
+          updateData.cancel_at = null
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from('users')
+          .update(updateData)
+          .eq('stripe_customer_id', customerId)
+
+        if (updateError) {
+          console.error('Error updating user subscription status:', updateError)
+        } else {
+          if (isCancelingAtPeriodEnd) {
+            console.log('✅ User subscription updated - scheduled for cancellation')
+          } else {
+            console.log('✅ User subscription updated - active (cancellation cleared)')
+          }
+        }
+
+        // Update subscriptions table if it exists
+        try {
+          await supabaseAdmin
+            .from('subscriptions')
+            .update({ 
+              status: subscription.status,
+            })
+            .eq('stripe_subscription_id', subscription.id)
+        } catch (err) {
+          console.warn('Could not update subscriptions table:', err)
+        }
+
+        break
+      }
+
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = typeof subscription.customer === 'string' 
@@ -421,7 +495,8 @@ serve(async (req) => {
           .from('users')
           .update({ 
             subscribed: false,
-            subscription_status: 'canceled'
+            subscription_status: 'canceled',
+            cancel_at: null // Clear scheduled cancellation date since subscription is now cancelled
           })
           .eq('stripe_customer_id', customerId)
 
@@ -506,7 +581,7 @@ DEPLOYMENT INSTRUCTIONS:
    - Go to Developers → Webhooks
    - Click "Add endpoint"
    - Paste your function URL
-   - Select events: checkout.session.completed, invoice.paid, customer.subscription.created
+   - Select events: checkout.session.completed, invoice.paid, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted
    - Copy the "Signing secret" (whsec_xxx)
    - Add it to Supabase Secrets as STRIPE_WEBHOOK_SECRET
 
@@ -514,6 +589,8 @@ DEPLOYMENT INSTRUCTIONS:
    stripe trigger checkout.session.completed
    stripe trigger invoice.paid
    stripe trigger customer.subscription.created
+   stripe trigger customer.subscription.updated
+   stripe trigger customer.subscription.deleted
 
 DATABASE SCHEMA:
 ================

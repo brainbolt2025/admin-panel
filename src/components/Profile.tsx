@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Shield, Building, Calendar, LogOut, XCircle, AlertCircle, Check } from 'lucide-react';
+import { User, Mail, Shield, Building, Calendar, LogOut, XCircle, AlertCircle, Check, AlertTriangle } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 
@@ -23,9 +23,12 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
   const [error, setError] = useState<string | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [subscriptionPlan, setSubscriptionPlan] = useState<string | null>(null);
+  const [cancelAt, setCancelAt] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const [reactivateError, setReactivateError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -42,7 +45,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         // Get user profile from users table
         const { data: userProfile, error: profileError } = await supabaseClient
           .from('users')
-          .select('id, name, email, role, property_id, created_at, subscription_status, plan')
+          .select('id, name, email, role, property_id, created_at, subscription_status, plan, cancel_at')
           .eq('id', user.id)
           .single();
 
@@ -54,6 +57,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         if (userProfile) {
           setSubscriptionStatus(userProfile.subscription_status);
           setSubscriptionPlan(userProfile.plan);
+          setCancelAt(userProfile.cancel_at || null);
         }
 
         // If user has a property_id, get property name
@@ -176,6 +180,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
 
       // Update local state
       setSubscriptionStatus(cancelImmediately ? 'canceled' : 'active');
+      setCancelAt(null); // Will be set by reload
       setShowCancelModal(false);
       
       // Reload page to refresh subscription info
@@ -185,6 +190,45 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
       setCancelError(err instanceof Error ? err.message : 'Failed to cancel subscription');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleReactivateSubscription = async () => {
+    setReactivating(true);
+    setReactivateError(null);
+
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(config.api.reactivateSubscription, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to reactivate subscription');
+      }
+
+      // Update local state
+      setCancelAt(null);
+      
+      // Reload page to refresh subscription info
+      window.location.reload();
+    } catch (err) {
+      console.error('Error reactivating subscription:', err);
+      setReactivateError(err instanceof Error ? err.message : 'Failed to reactivate subscription');
+    } finally {
+      setReactivating(false);
     }
   };
 
@@ -259,34 +303,77 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
 
             {/* Subscription Status (only for PMs) */}
             {profile.role === 'pm' && subscriptionStatus && (
-              <div className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
-                <div className={`p-2 rounded-lg ${
-                  subscriptionStatus === 'active' ? 'bg-green-100' : 'bg-red-100'
-                }`}>
-                  {subscriptionStatus === 'active' ? (
-                    <Check className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600" />
-                  )}
+              <>
+                {/* Cancellation Warning Message (persistent) */}
+                {cancelAt && (
+                  <div className="flex items-start space-x-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
+                    <div className="p-2 bg-yellow-100 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-yellow-800 mb-1">
+                        Subscription Scheduled for Cancellation
+                      </p>
+                      <p className="text-sm text-yellow-700 mb-3">
+                        Your subscription will be cancelled on{' '}
+                        <strong>{formatDate(cancelAt)}</strong>. You'll continue to have access to all features until then.
+                      </p>
+                      {reactivateError && (
+                        <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-2">
+                          <p className="text-red-800 text-sm">{reactivateError}</p>
+                        </div>
+                      )}
+                      <button
+                        onClick={handleReactivateSubscription}
+                        disabled={reactivating}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      >
+                        {reactivating ? 'Reactivating...' : 'Reactivate Subscription'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Subscription Status Card */}
+                <div className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
+                  <div className={`p-2 rounded-lg ${
+                    cancelAt 
+                      ? 'bg-yellow-100' 
+                      : subscriptionStatus === 'active' 
+                        ? 'bg-green-100' 
+                        : 'bg-red-100'
+                  }`}>
+                    {cancelAt ? (
+                      <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                    ) : subscriptionStatus === 'active' ? (
+                      <Check className="w-5 h-5 text-green-600" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 mb-1">Subscription Status</p>
+                    <p className="text-gray-800 font-medium capitalize">
+                      {cancelAt 
+                        ? 'Active (Scheduled for Cancellation)'
+                        : subscriptionStatus === 'active' 
+                          ? 'Active' 
+                          : subscriptionStatus}
+                    </p>
+                    {subscriptionPlan && (
+                      <p className="text-sm text-gray-500 mt-1">Plan: {subscriptionPlan}</p>
+                    )}
+                    {subscriptionStatus === 'active' && !cancelAt && (
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        className="mt-3 text-red-600 hover:text-red-700 text-sm font-medium"
+                      >
+                        Cancel Subscription
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-500 mb-1">Subscription Status</p>
-                  <p className="text-gray-800 font-medium capitalize">
-                    {subscriptionStatus === 'active' ? 'Active' : subscriptionStatus}
-                  </p>
-                  {subscriptionPlan && (
-                    <p className="text-sm text-gray-500 mt-1">Plan: {subscriptionPlan}</p>
-                  )}
-                  {subscriptionStatus === 'active' && (
-                    <button
-                      onClick={() => setShowCancelModal(true)}
-                      className="mt-3 text-red-600 hover:text-red-700 text-sm font-medium"
-                    >
-                      Cancel Subscription
-                    </button>
-                  )}
-                </div>
-              </div>
+              </>
             )}
           </div>
 
