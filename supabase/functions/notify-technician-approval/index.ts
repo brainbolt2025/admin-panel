@@ -101,11 +101,6 @@ serve(async (req) => {
             <li style="margin-bottom: 12px;">💬 Communicate directly with tenants or the property manager.</li>
             <li style="margin-bottom: 12px;">Mark jobs as complete once finished.</li>
           </ul>
-          <p style="margin-top: 24px;">
-            <a href="https://asine.app/login" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
-              Login here
-            </a>
-          </p>
         </body>
       </html>
     `
@@ -121,9 +116,7 @@ Here's what you can do next:
 
 💬 Communicate directly with tenants or the property manager.
 
-Mark jobs as complete once finished.
-
-Login here: https://asine.app/login`
+Mark jobs as complete once finished.`
 
     const mailgunBaseUrl =
       MAILGUN_REGION === 'eu' ? 'https://api.eu.mailgun.net/v3' : 'https://api.mailgun.net/v3'

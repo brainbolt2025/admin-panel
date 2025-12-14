@@ -38,6 +38,8 @@ interface Participant {
   user_id: string;
   name: string;
   role: string;
+  is_online?: boolean;
+  last_seen?: string;
 }
 
 export interface ChatProps {
@@ -67,6 +69,99 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
     };
     getCurrentUser();
   }, []);
+
+  // Set user online status when component mounts and update last_seen periodically
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const supabaseClient = getAuthenticatedSupabase();
+    
+    // Set user as online
+    const setOnline = async () => {
+      try {
+        const { data: userData } = await supabaseClient.auth.getUser();
+        if (!userData.user) return;
+
+        const { data: userProfile } = await supabaseClient
+          .from('users')
+          .select('role')
+          .eq('id', currentUserId)
+          .single();
+
+        // Only track online status for tenants and technicians
+        if (userProfile?.role === 'tenant' || userProfile?.role === 'technician') {
+          await supabaseClient
+            .from('users')
+            .update({ 
+              is_online: true,
+              last_seen: new Date().toISOString()
+            })
+            .eq('id', currentUserId);
+        }
+      } catch (error) {
+        console.error('Error setting user online:', error);
+      }
+    };
+
+    setOnline();
+
+    // Update last_seen every 30 seconds while user is active
+    const lastSeenInterval = setInterval(async () => {
+      try {
+        const { data: userData } = await supabaseClient.auth.getUser();
+        if (!userData.user) return;
+
+        const { data: userProfile } = await supabaseClient
+          .from('users')
+          .select('role, is_online')
+          .eq('id', currentUserId)
+          .single();
+
+        // Only update if user is still marked as online (tenant or technician)
+        if (userProfile?.is_online && (userProfile?.role === 'tenant' || userProfile?.role === 'technician')) {
+          await supabaseClient
+            .from('users')
+            .update({ last_seen: new Date().toISOString() })
+            .eq('id', currentUserId);
+        }
+      } catch (error) {
+        console.error('Error updating last_seen:', error);
+      }
+    }, 30000); // Update every 30 seconds
+
+    // Set user as offline when component unmounts
+    return () => {
+      clearInterval(lastSeenInterval);
+      
+      const setOffline = async () => {
+        try {
+          const { data: userData } = await supabaseClient.auth.getUser();
+          if (!userData.user) return;
+
+          const { data: userProfile } = await supabaseClient
+            .from('users')
+            .select('role')
+            .eq('id', currentUserId)
+            .single();
+
+          // Only update offline status for tenants and technicians
+          if (userProfile?.role === 'tenant' || userProfile?.role === 'technician') {
+            await supabaseClient
+              .from('users')
+              .update({ 
+                is_online: false,
+                last_seen: new Date().toISOString()
+              })
+              .eq('id', currentUserId);
+          }
+        } catch (error) {
+          console.error('Error setting user offline:', error);
+        }
+      };
+
+      setOffline();
+    };
+  }, [currentUserId]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = useCallback(() => {
@@ -274,7 +369,9 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
           role,
           user:users!user_id (
             name,
-            role
+            role,
+            is_online,
+            last_seen
           )
         `)
         .eq('conversation_id', convId);
@@ -288,6 +385,8 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
         user_id: p.user_id,
         name: p.user?.name || 'Unknown',
         role: p.user?.role || p.role,
+        is_online: p.user?.is_online ?? false,
+        last_seen: p.user?.last_seen || null,
       }));
 
       setParticipants(formattedParticipants);
@@ -474,6 +573,52 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
       conversationsChannel.unsubscribe();
     };
   }, [currentUserId, fetchConversations]);
+
+  // Subscribe to online status changes for participants
+  useEffect(() => {
+    if (!selectedConversationId || participants.length === 0) return;
+
+    const participantIds = participants.map((p) => p.user_id);
+    if (participantIds.length === 0) return;
+    
+    // Subscribe to updates for each participant individually
+    // (Supabase Realtime doesn't support IN filters easily, so we subscribe to all participant IDs)
+    const onlineStatusChannel = supabase
+      .channel(`online-status-${selectedConversationId}`);
+
+    participantIds.forEach((userId) => {
+      onlineStatusChannel.on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('Online status updated for user:', userId, payload.new);
+          // Update participant online status in state
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.user_id === payload.new.id
+                ? {
+                    ...p,
+                    is_online: payload.new.is_online ?? false,
+                    last_seen: payload.new.last_seen || p.last_seen,
+                  }
+                : p
+            )
+          );
+        }
+      );
+    });
+
+    onlineStatusChannel.subscribe();
+
+    return () => {
+      onlineStatusChannel.unsubscribe();
+    };
+  }, [selectedConversationId, participants]);
 
   // ============================================
   // SEND MESSAGE
@@ -674,9 +819,27 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
               </h3>
               <div className="text-sm text-gray-500 mt-1">
                 {participants.length > 0 && (
-                  <span>
-                    {participants.map((p) => p.name).join(', ')}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {participants.map((p) => {
+                      // Only show online status for tenants and technicians
+                      const showOnlineStatus = p.role === 'tenant' || p.role === 'technician';
+                      const isOnline = p.is_online ?? false;
+                      
+                      return (
+                        <span key={p.user_id} className="flex items-center gap-1">
+                          <span>{p.name}</span>
+                          {showOnlineStatus && (
+                            <span
+                              className={`inline-block w-2 h-2 rounded-full ${
+                                isOnline ? 'bg-green-500' : 'bg-gray-400'
+                              }`}
+                              title={isOnline ? 'Online' : `Last seen: ${p.last_seen ? formatTime(p.last_seen) : 'Unknown'}`}
+                            />
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>

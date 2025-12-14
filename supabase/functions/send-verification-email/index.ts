@@ -23,12 +23,29 @@
     }
 
     try {
+      console.log('=== send-verification-email Function Called ===')
+      console.log('Request method:', req.method)
+      console.log('Request URL:', req.url)
+      console.log('Request headers:', Object.fromEntries(req.headers.entries()))
+      
       // Parse the request body
       const body: SendVerificationEmailRequest = await req.json()
       const { email, name, token, subject } = body
 
+      console.log('=== Request Body ===')
+      console.log('Email:', email)
+      console.log('Name:', name)
+      console.log('Token:', token ? token.substring(0, 20) + '...' : 'MISSING')
+      console.log('Subject:', subject)
+
       // Validate required fields
       if (!email || !name || !token || !subject) {
+        console.error('Missing required fields:', {
+          hasEmail: !!email,
+          hasName: !!name,
+          hasToken: !!token,
+          hasSubject: !!subject,
+        })
         return new Response(
           JSON.stringify({
             success: false,
@@ -65,27 +82,65 @@
       const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
       const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us' // 'us' or 'eu'
       
-      // Determine BASE_URL dynamically based on environment
-      // Priority: 1. BASE_URL secret, 2. Auto-detect from Stripe mode, 3. Default
-      let BASE_URL = Deno.env.get('BASE_URL')
+      // Determine verification link format - prioritize deep links for mobile app
+      // Deep links (asine://) are more reliable for opening the app from emails
+      console.log('=== Environment Variables Check ===')
+      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+      const isTestMode = stripeSecretKey.startsWith('sk_test_')
+      console.log('STRIPE_SECRET_KEY present:', !!stripeSecretKey)
+      console.log('STRIPE_SECRET_KEY prefix:', stripeSecretKey ? stripeSecretKey.substring(0, 7) + '...' : 'MISSING')
+      console.log('isTestMode:', isTestMode)
       
-      if (!BASE_URL) {
-        // Auto-detect environment from Stripe secret key
-        const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-        const isTestMode = stripeSecretKey.startsWith('sk_test_')
-        
-        if (isTestMode) {
-          // Test/Development mode - use localhost
-          BASE_URL = 'http://localhost:5173'
-          console.log('Auto-detected test mode: Using localhost for BASE_URL')
-        } else {
-          // Live/Production mode - use production domain
-          BASE_URL = 'https://admin.asine.app'
-          console.log('Auto-detected live mode: Using production domain for BASE_URL')
-        }
-      } else {
-        console.log('Using BASE_URL from environment:', BASE_URL)
+      // Get deep link configuration (prioritize this for mobile app compatibility)
+      let APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
+      let APP_URL = Deno.env.get('APP_URL') || ''
+      let BASE_URL = Deno.env.get('BASE_URL') || ''
+      let DEV_APP_PORT = Deno.env.get('DEV_APP_PORT') || ''
+      
+      console.log('APP_DEEP_LINK_SCHEME:', APP_DEEP_LINK_SCHEME || 'NOT SET')
+      console.log('APP_URL:', APP_URL || 'NOT SET')
+      console.log('BASE_URL:', BASE_URL || 'NOT SET')
+      console.log('DEV_APP_PORT:', DEV_APP_PORT || 'NOT SET (will use default 8081)')
+      
+      // Use BASE_URL as fallback if APP_URL not set
+      if (!APP_URL && BASE_URL) {
+        APP_URL = BASE_URL
+        console.log('Using BASE_URL as APP_URL:', APP_URL)
       }
+      
+      let verifyLink: string
+      let linkFormat: string
+      
+      // Use web URL format (same as work order emails) - this works with Android App Links
+      // Format: http://localhost:8081/verify?token=xxx (test mode)
+      // This format works better than deep links for verification emails
+      if (isTestMode) {
+        // In test mode, use localhost:8081 (matches working work order emails)
+        const port = DEV_APP_PORT || '8081'
+        APP_URL = APP_URL || `http://localhost:${port}`
+        verifyLink = `${APP_URL}/verify?token=${token}`
+        linkFormat = 'WEB_URL_TEST_MODE'
+        console.log('✅ Using WEB URL format (TEST MODE - same as work order emails)')
+        console.log('Using port:', port)
+      } else if (APP_URL) {
+        // Use configured app URL
+        verifyLink = `${APP_URL}/verify?token=${token}`
+        linkFormat = 'WEB_URL_CONFIGURED'
+        console.log('✅ Using WEB URL format (from APP_URL configuration)')
+      } else {
+        // Final fallback - web URL
+        verifyLink = `https://admin.asine.app/verify?token=${token}`
+        linkFormat = 'WEB_URL_FALLBACK'
+        console.log('⚠️ Using WEB URL format (FALLBACK)')
+      }
+      
+      // Note: Deep links (asine://) are NOT used because web URLs work better for verification
+      // The web URL format (http://localhost:8081/verify?token=xxx) opens the app via Android App Links
+      
+      console.log('=== Final Verification Link ===')
+      console.log('Link Format:', linkFormat)
+      console.log('Generated Link:', verifyLink)
+      console.log('Token in link:', token ? token.substring(0, 20) + '...' : 'MISSING')
 
       // Validate Mailgun configuration
       if (!MAILGUN_API_KEY) {
@@ -124,16 +179,11 @@
       // Note: Mailgun keys typically start with "key-" but some accounts may have different formats
       // We'll proceed with whatever key is provided and let Mailgun API validate it
 
-      console.log('Mailgun Configuration:', {
-        domain: MAILGUN_DOMAIN,
-        region: MAILGUN_REGION,
-        apiKeyPrefix: MAILGUN_API_KEY.substring(0, 7) + '...',
-        baseUrl: BASE_URL,
-      })
-
-      // Build the verification link
-      // This link will be used by the Property Manager to verify their account
-      const verifyLink = `${BASE_URL}/verify?token=${token}`
+      console.log('=== Mailgun Configuration ===')
+      console.log('MAILGUN_DOMAIN:', MAILGUN_DOMAIN || 'MISSING')
+      console.log('MAILGUN_REGION:', MAILGUN_REGION)
+      console.log('MAILGUN_API_KEY present:', !!MAILGUN_API_KEY)
+      console.log('MAILGUN_API_KEY prefix:', MAILGUN_API_KEY ? MAILGUN_API_KEY.substring(0, 7) + '...' : 'MISSING')
 
       // Construct the HTML email body
       // The email includes a styled button and clear instructions for verification
@@ -198,9 +248,7 @@
         fromEmail: `noreply@${MAILGUN_DOMAIN}`,
       })
 
-      console.log('Sending email via Mailgun to:', email)
-      console.log('Mailgun domain:', MAILGUN_DOMAIN)
-      console.log('Verification link:', verifyLink)
+      // Log removed - already logged above in detailed section
 
       // Make the API request to Mailgun
       console.log('Making Mailgun API request...', {
@@ -302,7 +350,13 @@
       }
 
       // Check for errors in successful response (Mailgun sometimes returns 200 with error field)
+      console.log('=== Mailgun Response Analysis ===')
+      console.log('Response status:', mailgunResponse.status)
+      console.log('Response OK:', mailgunResponse.ok)
+      console.log('Mailgun result:', JSON.stringify(mailgunResult))
+      
       if (mailgunResult.error) {
+        console.error('⚠️ Mailgun returned error in response:', mailgunResult.error)
         console.error('Mailgun returned error in response:', mailgunResult)
         return new Response(
           JSON.stringify({
@@ -318,12 +372,21 @@
 
       // Success response
       // Mailgun typically returns: { id: "<...>", message: "Queued. Thank you." }
-      console.log('Email sent successfully via Mailgun:', mailgunResult.id || mailgunResult.message)
+      console.log('=== Email Sent Successfully ===')
+      console.log('Mailgun Response ID:', mailgunResult.id || 'N/A')
+      console.log('Mailgun Message:', mailgunResult.message || 'N/A')
+      console.log('Email sent to:', email)
+      console.log('Verification link sent:', verifyLink)
+      console.log('Link format:', linkFormat)
+      console.log('Full Mailgun response:', JSON.stringify(mailgunResult))
+      
       return new Response(
         JSON.stringify({
           success: true,
           message: 'Email sent successfully',
           mailgun_id: mailgunResult.id,
+          verification_link: verifyLink, // Include link in response for debugging
+          link_format: linkFormat, // Include format for debugging
         }),
         {
           status: 200,
@@ -331,7 +394,11 @@
         }
       )
     } catch (error) {
-      console.error('Error sending verification email:', error)
+      console.error('=== Error in send-verification-email Function ===')
+      console.error('Error type:', error instanceof Error ? error.constructor.name : typeof error)
+      console.error('Error message:', error instanceof Error ? error.message : String(error))
+      console.error('Error stack:', error instanceof Error ? error.stack : 'N/A')
+      console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)))
 
       // Handle parsing errors, network errors, etc.
       return new Response(
@@ -353,13 +420,17 @@
   1. Set Mailgun configuration in Supabase secrets:
     supabase secrets set MAILGUN_DOMAIN=mg.asine.app
     supabase secrets set MAILGUN_API_KEY=key-xxxxxxxxxxxxxxxxxxxxx
-    supabase secrets set BASE_URL=http://localhost:5173  # Optional - auto-detected if not set
+  
+  2. Optional - web URL configuration (auto-detected in test mode):
+    supabase secrets set APP_URL=http://localhost:8081  # For test mode
+    supabase secrets set DEV_APP_PORT=8081  # Optional - defaults to 8081
     
-    BASE_URL is automatically determined:
-    - If BASE_URL secret is set: uses that value
-    - If STRIPE_SECRET_KEY starts with sk_test_: uses http://localhost:5173 (test/dev)
-    - If STRIPE_SECRET_KEY starts with sk_live_: uses https://admin.asine.app (production)
-    - You can override by setting BASE_URL secret (e.g., http://localhost:3000)
+    Link format priority (uses web URL format - same as work order emails):
+    - In test mode (auto): uses http://localhost:8081/verify?token=xxx ✅ WORKS WITH APP
+    - If APP_URL is set: uses configured URL/verify?token=xxx
+    - Fallback: uses https://admin.asine.app/verify?token=xxx
+    
+    Note: Deep links (asine://) are NOT used because web URLs work better with Android App Links
 
   2. Deploy the function:
     supabase functions deploy send-verification-email
@@ -449,7 +520,8 @@
   =====================
   - MAILGUN_DOMAIN: Your verified Mailgun domain (e.g., mg.asine.app)
   - MAILGUN_API_KEY: Your Mailgun API key (starts with "key-")
-  - BASE_URL: Base URL for verification links (e.g., https://admin.asine.app)
+  - APP_URL: App URL for verification links (e.g., http://localhost:8081 in test, https://admin.asine.app in prod)
+  - DEV_APP_PORT: Port for localhost URL in test mode (default: 8081)
 
   SECURITY NOTES:
   ==============
