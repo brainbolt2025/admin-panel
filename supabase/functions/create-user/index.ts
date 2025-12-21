@@ -176,7 +176,7 @@ serve(async (req) => {
             property_name,
             role: 'pm'
           },
-          email_confirm: false // Don't require email confirmation
+          email_confirm: true // Auto-confirm email to allow PMs to login immediately
         })
       })
       

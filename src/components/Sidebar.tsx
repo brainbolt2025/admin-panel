@@ -69,7 +69,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
       
       {/* Sidebar */}
       <div className={`
-        fixed top-0 left-0 h-full bg-white rounded-r-2xl shadow-lg z-50 transition-transform duration-300 ease-in-out
+        fixed top-0 left-0 h-full z-50 transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 lg:static lg:z-auto
         w-64
@@ -78,14 +78,19 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
           {/* Header */}
           <div className="flex items-center justify-between p-6">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
+              {/* Circular logo */}
+              <div className="w-10 h-10 bg-teal-600 rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-white font-bold text-sm">
                   {isPM ? 'PM' : 'SA'}
                 </span>
               </div>
-              <div>
-                <h1 className="text-lg font-semibold text-gray-800">
-                  {isPM ? 'Property Manager' : 'Super Admin'}
+              {/* Stacked text */}
+              <div className="flex flex-col">
+                <h1 className="text-lg font-bold text-gray-800 leading-tight">
+                  {isPM ? 'Property' : 'Super'}
+                </h1>
+                <h1 className="text-lg font-bold text-gray-800 leading-tight">
+                  {isPM ? 'Manager' : 'Admin'}
                 </h1>
               </div>
             </div>
@@ -98,24 +103,25 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 pb-6">
+          <nav className="flex-1 px-4 pb-6 overflow-y-auto">
             <ul className="space-y-1">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
+                const isActive = activeItem === item.id;
                 return (
                   <li key={item.id}>
                     <div
                       onClick={() => onActiveItemChange(item.id)}
                       className={`
-                        w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium
-                        ${activeItem === item.id
-                          ? 'bg-teal-50 text-teal-700'
-                          : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'
+                        w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors
+                        ${isActive
+                          ? 'bg-teal-50 text-teal-700 font-medium'
+                          : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50 font-normal'
                         }
                       `}
                     >
                       <span className="flex items-center gap-3">
-                        <Icon className="w-4 h-4" />
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-teal-600' : 'text-gray-500'}`} />
                         <span>{item.label}</span>
                       </span>
                       {item.id === 'Work Orders' && isPM && pendingCount > 0 && (

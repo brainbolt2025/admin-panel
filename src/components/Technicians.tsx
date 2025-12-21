@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Wrench, Mail, Check, X as XIcon, Calendar, ChevronDown, Camera, Info, MapPin, Shield, Clock } from 'lucide-react';
+import { Search, Wrench, Mail, Check, X as XIcon, Calendar, ChevronDown, Camera, Info, MapPin, Shield, Clock, Bell } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
@@ -492,41 +492,60 @@ const Technicians = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Technicians</h1>
-
-      {/* Search and Filters */}
-      <div className="mb-6 space-y-4">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search technicians..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-          />
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-4">
-          <div className="relative flex-1 max-w-xs">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-            >
-              <option value="All">Status: All</option>
-              <option value="Approved">Approved</option>
-              <option value="Pending">Pending</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+      <div className="bg-white rounded-xl shadow-sm">
+        {/* Topbar - Search and Alerts */}
+        <div className="flex items-center justify-between px-6 py-4">
+          {/* Left side - Search */}
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search technicians..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+              />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Technicians Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {/* Right side - Alerts (for PM only) */}
+          {isPM && (
+            <div className="flex items-center space-x-2">
+              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                <Bell className="w-4 h-4 text-gray-600" />
+              </div>
+              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content Section */}
+        <div className="px-6 pb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">Technicians</h1>
+
+          {/* Filters */}
+          <div className="mb-6 space-y-4">
+            <div className="flex gap-4">
+              <div className="relative flex-1 max-w-xs">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="All">Status: All</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Pending">Pending</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          </div>
+
+          {/* Technicians Table */}
+          <div className="overflow-hidden">
         {loadingTechnicians ? (
           <div className="text-center py-12">
             <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -881,6 +900,8 @@ const Technicians = () => {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

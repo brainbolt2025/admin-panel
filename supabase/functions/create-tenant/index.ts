@@ -616,7 +616,46 @@ If you didn't create an account, please ignore this email.`
       emailError = error instanceof Error ? error.message : 'Unknown error sending verification email'
     }
 
-    // Return success response
+    // Fetch access token for the newly created tenant (same approach as create-technician)
+    // Note: Token may not work until email is confirmed by the user
+    const serviceRoleResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseServiceKey,
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ email, password }),
+    })
+
+    if (!serviceRoleResponse.ok) {
+      console.error('Error fetching tenant access token:', await serviceRoleResponse.text())
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          user_id: authUserId,
+          email,
+          name,
+          property_id: finalPropertyId,
+          property_name: finalPropertyName,
+          unit_number: unit_number || null,
+          email_sent: emailSent,
+          email_error: emailError || undefined,
+          warning: 'Tenant created but failed to fetch access token.',
+          message: emailSent 
+            ? 'Tenant account created successfully. A verification email has been sent. Please check your email to verify your account before signing in.'
+            : 'Tenant account created successfully. However, there was an issue sending the verification email. ' + (emailError || 'Please contact support.')
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    const tokenResult = await serviceRoleResponse.json()
+
+    // Return success response with access token
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -626,6 +665,10 @@ If you didn't create an account, please ignore this email.`
         property_id: finalPropertyId,
         property_name: finalPropertyName,
         unit_number: unit_number || null,
+        access_token: tokenResult.access_token,
+        refresh_token: tokenResult.refresh_token,
+        token_type: tokenResult.token_type,
+        expires_in: tokenResult.expires_in,
         email_sent: emailSent,
         email_error: emailError || undefined,
         message: emailSent 

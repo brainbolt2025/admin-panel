@@ -36,7 +36,7 @@ const PropertyManagers = () => {
 
         const { data: pmData, error: pmError } = await supabaseClient
           .from('users')
-          .select('id, name, email, approved, property_name')
+          .select('id, name, email, approved, property_name, subscription_status, subscribed, email_verified')
           .eq('role', 'pm')
           .order('created_at', { ascending: false });
 
@@ -86,8 +86,23 @@ const PropertyManagers = () => {
               assignedProps.find((property) => property.region && property.region !== 'Unassigned')?.region ??
               (assignedProps[0]?.region ?? 'Unassigned');
 
-            const status =
-              pm.approved === true ? 'Active' : pm.approved === false ? 'Deactivated' : 'Invite Sent';
+            // Determine status based on subscription status only (PMs don't use approved field)
+            // Active: has active subscription
+            // Deactivated: no active subscription or subscription is cancelled/expired
+            // Invite Sent: no subscription at all (newly created PM without subscription)
+            let status: 'Active' | 'Invite Sent' | 'Deactivated';
+            
+            const hasActiveSubscription = pm.subscribed === true && pm.subscription_status === 'active';
+            
+            if (hasActiveSubscription) {
+              status = 'Active';
+            } else if (pm.subscription_status === null || pm.subscription_status === undefined) {
+              // No subscription status means invite was sent but not yet subscribed
+              status = 'Invite Sent';
+            } else {
+              // Has subscription status but not active (cancelled, expired, etc.)
+              status = 'Deactivated';
+            }
 
             const avatarSource =
               pm.avatar_url ||

@@ -45,7 +45,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         // Get user profile from users table
         const { data: userProfile, error: profileError } = await supabaseClient
           .from('users')
-          .select('id, name, email, role, property_id, created_at, subscription_status, plan, cancel_at')
+          .select('id, name, email, role, property_id, created_at, subscription_status, plan, cancel_at, email_verified')
           .eq('id', user.id)
           .single();
 
@@ -263,6 +263,11 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
               <div className="flex-1">
                 <p className="text-sm text-gray-500 mb-1">Email Address</p>
                 <p className="text-gray-800 font-medium">{profile.email || 'N/A'}</p>
+                {profile.role === 'pm' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Please verify this email address is correct. You won't receive important notifications if it's incorrect.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -362,6 +367,28 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
                     </p>
                     {subscriptionPlan && (
                       <p className="text-sm text-gray-500 mt-1">Plan: {subscriptionPlan}</p>
+                    )}
+                    {/* Show cancellation date information */}
+                    {subscriptionStatus === 'canceled' && cancelAt && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600">
+                          Cancelled on: <strong>{formatDate(cancelAt)}</strong>
+                        </p>
+                        {new Date(cancelAt) < new Date() ? (
+                          <p className="text-sm text-red-600 mt-1">
+                            Cancellation date has passed - subscription expired
+                          </p>
+                        ) : (
+                          <p className="text-sm text-yellow-600 mt-1">
+                            Subscription will expire on {formatDate(cancelAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {subscriptionStatus === 'canceled' && !cancelAt && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        Subscription has been cancelled
+                      </p>
                     )}
                     {subscriptionStatus === 'active' && !cancelAt && (
                       <button

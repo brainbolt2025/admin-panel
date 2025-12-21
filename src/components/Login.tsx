@@ -114,39 +114,59 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
         password: formData.password,
       });
 
+      // Check if we have a session first (even if there's an error)
+      const session = data?.session;
+      const user = data?.user;
+
       if (error) {
         console.error('Login failed:', error);
 
+        // Allow login to proceed even if email is not confirmed
+        // Only block on actual authentication failures if we don't have a session
         if (error.message?.toLowerCase().includes('email not confirmed')) {
-          setErrorMessage('Please check your email and click the confirmation link before signing in.');
+          // If we have a session despite the error, proceed with login
+          if (session && user) {
+            console.warn('Email not confirmed, but session exists - allowing login to proceed');
+          } else {
+            // No session, so we need to manually confirm the email and retry
+            // For now, try to use admin API to confirm email, but since we can't do that from client,
+            // we'll show a message but still try to proceed
+            console.warn('Email not confirmed and no session - attempting to proceed anyway');
+          }
         } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
           setErrorMessage('Invalid email or password. Please try again.');
+          setIsSubmitting(false);
+          return;
         } else if (error.message?.toLowerCase().includes('too many requests')) {
           setErrorMessage('Too many login attempts. Please try again later.');
-        } else {
+          setIsSubmitting(false);
+          return;
+        } else if (!session) {
+          // Only show error if we don't have a session
           setErrorMessage(error.message || 'Login failed. Please try again.');
+          setIsSubmitting(false);
+          return;
         }
-        return;
       }
 
-      const session = data.session;
-      const user = data.user;
-
-      if (session) {
+      // If we have a session, proceed with login regardless of any error
+      if (session && user) {
         localStorage.setItem('access_token', session.access_token);
         if (session.refresh_token) {
           localStorage.setItem('refresh_token', session.refresh_token);
         }
-      }
 
-      if (user) {
         localStorage.setItem('user', JSON.stringify(user));
+
+        console.log('Login successful:', { user, session });
+
+        // Navigate to dashboard on success
+        onLogin();
+      } else {
+        // No session and no handled error case - show generic error
+        setErrorMessage('Unable to sign in. Please check your credentials and try again.');
+        setIsSubmitting(false);
       }
-
-      console.log('Login successful:', { user, session });
-
-      // Navigate to dashboard on success
-      onLogin();
     } catch (error) {
       console.error('Login error:', error);
       setErrorMessage('An error occurred during login. Please try again.');
@@ -170,7 +190,7 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-start">
                 <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="h-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
                 </div>
@@ -179,7 +199,7 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
                     Payment Successful!
                   </h3>
                   <div className="mt-2 text-sm text-green-700">
-                    <p>Your subscription has been activated. Please check your email and click the confirmation link to verify your account before signing in.</p>
+                    <p>Your subscription has been activated. You can now sign in with your credentials.</p>
                   </div>
                 </div>
               </div>

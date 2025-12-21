@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus } from 'lucide-react';
+import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, Bell } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 
 interface WorkOrder {
@@ -85,10 +85,10 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     return null;
   };
 
-  const userName = getUserName();
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
   const [pmPropertyId, setPmPropertyId] = useState<string | null>(() => getUserPropertyId());
+  const [userName, setUserName] = useState<string>('Admin');
 
   const [adminStats, setAdminStats] = useState({
     activePMs: 0,
@@ -196,6 +196,39 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [errorUsers, setErrorUsers] = useState<string | null>(null);
+
+  // Fetch user name from users table
+  useEffect(() => {
+    const fetchUserName = async () => {
+      try {
+        const supabaseClient = getAuthenticatedSupabase();
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        if (user) {
+          const { data: profile } = await supabaseClient
+            .from('users')
+            .select('name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.name) {
+            setUserName(profile.name);
+          } else {
+            // Fallback to email username if name not found
+            const emailUsername = user.email?.split('@')[0] || 'Admin';
+            setUserName(emailUsername);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user name:', error);
+        // Fallback to localStorage if database fetch fails
+        const fallbackName = getUserName();
+        setUserName(fallbackName);
+      }
+    };
+
+    fetchUserName();
+  }, []);
 
   // Fetch work orders from database
   useEffect(() => {
@@ -432,15 +465,45 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
 
   return (
     <div className="p-6">
-      {/* Welcome Message */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome, {userName}!
-        </h1>
-        <p className="text-gray-600">
-          Here's an overview of your management dashboard
-        </p>
-      </div>
+      <div className="bg-white rounded-xl shadow-sm">
+        {/* Topbar - Search and Alerts */}
+        <div className="flex items-center justify-between px-6 py-4">
+          {/* Left side - Search */}
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder={isPM ? "Search tenants, technicians…" : "Search PMs, properties…"}
+                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Right side - Alerts (for PM only) */}
+          {isPM && (
+            <div className="flex items-center space-x-2">
+              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                <Bell className="w-4 h-4 text-gray-600" />
+              </div>
+              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
+            </div>
+          )}
+        </div>
+
+        {/* Dashboard Content */}
+        <div className="px-6 pb-6">
+          {/* Welcome Message */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome, {userName}!
+            </h1>
+            <p className="text-gray-600">
+              Here's an overview of your management dashboard
+            </p>
+          </div>
 
       {/* Overview Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -671,6 +734,8 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         </div>
       </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

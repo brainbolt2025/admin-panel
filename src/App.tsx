@@ -12,6 +12,8 @@ import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
 import Profile from './components/Profile'
 import SubscriptionCancellationBanner from './components/SubscriptionCancellationBanner'
+import RenewSubscription from './components/RenewSubscription'
+import EmailVerificationBanner from './components/EmailVerificationBanner'
 import { getAuthenticatedSupabase, supabase } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 
@@ -23,6 +25,7 @@ interface UserProfile {
   approved: boolean | null
   property_id?: string | null
   property_name?: string | null
+  email_verified?: boolean | null
 }
 
 function App() {
@@ -32,6 +35,7 @@ function App() {
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
+  const [showRenewSubscription, setShowRenewSubscription] = useState(false)
   const [subscriptionPrefill, setSubscriptionPrefill] = useState({
     name: '',
     email: '',
@@ -66,21 +70,6 @@ function App() {
   const [pendingTenantsCount, setPendingTenantsCount] = useState(0)
   const [refreshWorkOrdersList, setRefreshWorkOrdersList] = useState<(() => Promise<void>) | null>(null)
 
-  // Handle payment success redirect (just log, let Login component handle the UI)
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const sessionId = urlParams.get('session_id')
-    const paymentStatus = urlParams.get('payment')
-    
-    if (paymentStatus === 'success' && sessionId) {
-      console.log('App: Payment successful, session ID:', sessionId)
-      // Don't clear URL parameters here - let Login component handle it
-      // The Login component will show the success message and clear the params
-    } else if (paymentStatus === 'cancelled') {
-      console.log('App: Payment was cancelled')
-      // Don't clear URL parameters here - let Login component handle it
-    }
-  }, [])
 
   const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
     if (!profile) return
@@ -111,7 +100,7 @@ function App() {
       const supabaseClient = getAuthenticatedSupabase()
       const { data: profile, error } = await supabaseClient
         .from('users')
-        .select('id, email, name, role, approved, property_id, property_name, cancel_at')
+        .select('id, email, name, role, approved, property_id, property_name, cancel_at, subscription_status, subscribed, email_verified')
         .eq('id', userId)
         .maybeSingle()
 
@@ -123,6 +112,31 @@ function App() {
         setUserProfile(profile)
         setCancelAt(profile.cancel_at || null)
         syncLocalStorageUser(profile)
+        
+        // Check if subscription is cancelled or expired - show renewal page if:
+        // 1. Subscription status is 'canceled' and subscribed is false (no active subscription)
+        // 2. OR subscription is 'canceled' and cancel_at date has passed
+        if (profile.role === 'pm') {
+          const hasActiveSubscription = profile.subscribed === true && profile.subscription_status === 'active'
+          const isCancelled = profile.subscription_status === 'canceled'
+          const hasCancelDate = profile.cancel_at !== null
+          
+          if (isCancelled && !hasActiveSubscription) {
+            if (hasCancelDate) {
+              // Check if cancel_at date has passed
+              const cancelDate = new Date(profile.cancel_at)
+              const now = new Date()
+              if (now >= cancelDate) {
+                setShowRenewSubscription(true)
+              }
+            } else {
+              // No cancel_at date means subscription was cancelled immediately or manually deleted
+              // Show renewal page if no active subscription
+              setShowRenewSubscription(true)
+            }
+          }
+        }
+        
         return profile
       }
 
@@ -259,6 +273,41 @@ function App() {
       subscription.unsubscribe()
     }
   }, [loadUserProfile, clearStoredSession])
+
+  // Handle payment success redirect (must be after loadUserProfile is defined)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const sessionId = urlParams.get('session_id')
+    const paymentStatus = urlParams.get('payment')
+    const isRenewal = urlParams.get('renewal') === 'true'
+    
+    if (paymentStatus === 'success' && sessionId) {
+      console.log('App: Payment successful, session ID:', sessionId, 'Renewal:', isRenewal)
+      
+      // If this is a renewal and user is logged in, reload profile to update subscription status
+      if (isRenewal && userProfile?.id) {
+        loadUserProfile(userProfile.id).catch(console.error)
+        // Clear URL parameters
+        if (window.history.replaceState) {
+          const url = new URL(window.location.href)
+          url.searchParams.delete('session_id')
+          url.searchParams.delete('payment')
+          url.searchParams.delete('renewal')
+          window.history.replaceState({}, document.title, url.toString())
+        }
+      }
+      // For non-renewal payments, let Login component handle it
+    } else if (paymentStatus === 'cancelled') {
+      console.log('App: Payment was cancelled')
+      // Clear URL parameters
+      if (window.history.replaceState) {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('payment')
+        url.searchParams.delete('renewal')
+        window.history.replaceState({}, document.title, url.toString())
+      }
+    }
+  }, [userProfile, loadUserProfile])
 
   // Initialize auth state on first load
   useEffect(() => {
@@ -405,9 +454,9 @@ function App() {
         }
       })
 
-    // Subscribe to current user's cancel_at changes (for PMs)
-    const userCancellationChannel = supabaseClient
-      .channel('user_cancellation_changes')
+    // Subscribe to current user's changes (cancel_at, subscription_status, email_verified)
+    const userUpdatesChannel = supabaseClient
+      .channel('user_updates_changes')
       .on(
         'postgres_changes',
         {
@@ -418,17 +467,48 @@ function App() {
         },
         (payload) => {
           const newRecord = payload.new as any
+          
+          // Update cancel_at if changed
           if (newRecord?.cancel_at !== undefined) {
             console.log('User cancellation status changed, updating cancel_at')
             setCancelAt(newRecord.cancel_at || null)
+          }
+          
+          // Update email_verified if changed (triggers re-render of banner)
+          if (newRecord?.email_verified !== undefined) {
+            console.log('User email verification status changed, updating userProfile')
+            setUserProfile((prev) => prev ? { ...prev, email_verified: newRecord.email_verified } : null)
+          }
+          
+          // Check if subscription is cancelled or expired - show renewal page if needed
+          if (userProfile?.role === 'pm') {
+            const hasActiveSubscription = newRecord?.subscribed === true && newRecord?.subscription_status === 'active'
+            const isCancelled = newRecord?.subscription_status === 'canceled'
+            const hasCancelDate = newRecord?.cancel_at !== null
+            
+            if (isCancelled && !hasActiveSubscription) {
+              if (hasCancelDate) {
+                // Check if cancel_at date has passed
+                const cancelDate = new Date(newRecord.cancel_at)
+                const now = new Date()
+                if (now >= cancelDate) {
+                  setShowRenewSubscription(true)
+                }
+              } else {
+                // No cancel_at date means subscription was cancelled immediately or manually deleted
+                setShowRenewSubscription(true)
+              }
+            } else if (hasActiveSubscription || newRecord?.subscription_status === 'active') {
+              setShowRenewSubscription(false)
+            }
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription active for user cancellation status')
+          console.log('Real-time subscription active for user updates')
         } else if (status === 'CHANNEL_ERROR') {
-          console.log('Real-time not available for cancellation status')
+          console.log('Real-time not available for user updates')
         }
       })
 
@@ -437,7 +517,7 @@ function App() {
       // clearInterval(pollInterval) // COMMENTED OUT - polling disabled for testing
       supabaseClient.removeChannel(workOrdersChannel)
       supabaseClient.removeChannel(techniciansChannel)
-      supabaseClient.removeChannel(userCancellationChannel)
+      supabaseClient.removeChannel(userUpdatesChannel)
     }
   }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount, refreshWorkOrdersList])
 
@@ -584,6 +664,22 @@ const pendingWorkOrdersContextValue = useMemo(
     )
   }
 
+  // Show renew subscription page (for cancelled subscriptions)
+  if (showRenewSubscription && userProfile?.role === 'pm') {
+    return (
+      <RenewSubscription
+        onSuccess={() => {
+          setShowRenewSubscription(false)
+          // Reload user profile to refresh subscription status
+          if (userProfile?.id) {
+            loadUserProfile(userProfile.id).catch(console.error)
+          }
+        }}
+        onLogout={handleLogout}
+      />
+    )
+  }
+
   // Show subscription page (no authentication required)
   if (showSubscription) {
     return (
@@ -624,13 +720,27 @@ const pendingWorkOrdersContextValue = useMemo(
         />
         
         <div className="flex-1 flex flex-col">
-          <Topbar 
-            onMenuToggle={toggleSidebar} 
-            onNewPMAccount={handleNewPMAccount} 
-            onLogout={handleLogout}
-            onNavigateToWorkOrder={handleNavigateToWorkOrder}
-          />
-          {userProfile?.role === 'pm' && <SubscriptionCancellationBanner cancelAt={cancelAt} />}
+          {!['Dashboard', 'Work Orders', 'Tenants', 'Technicians', 'Profile'].includes(activeItem) && (
+            <Topbar 
+              onMenuToggle={toggleSidebar} 
+              onNewPMAccount={handleNewPMAccount} 
+              onLogout={handleLogout}
+              onNavigateToWorkOrder={handleNavigateToWorkOrder}
+            />
+          )}
+          {userProfile?.role === 'pm' && (
+            <>
+              <SubscriptionCancellationBanner cancelAt={cancelAt} />
+              {userProfile.email_verified === false && (
+                <EmailVerificationBanner 
+                  email={userProfile.email} 
+                  emailVerified={userProfile.email_verified === true}
+                  userName={userProfile.name}
+                  userId={userProfile.id}
+                />
+              )}
+            </>
+          )}
           <main className="flex-1">
             {renderContent()}
           </main>

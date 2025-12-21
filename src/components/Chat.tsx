@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FC } from 'react';
 import { Send, Paperclip, Check, CheckCheck, Clock, MessageSquare } from 'lucide-react';
 import { getAuthenticatedSupabase, supabase } from '../lib/supabase';
+import { config } from '../config';
 
 interface Message {
   id: string;
@@ -647,12 +648,64 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
         return;
       }
 
+      // Save message content before clearing input
+      const messageContent = newMessage.trim();
+
       // Clear input
       setNewMessage('');
 
-      // The realtime subscription will handle adding the message to the UI
-      // But we can also manually add it for immediate feedback
+      // Send email notification to recipient (non-blocking)
       if (messageData) {
+        try {
+          console.log('Attempting to send notification for message:', {
+            conversation_id: selectedConversationId,
+            sender_id: currentUserId,
+            message_content_length: messageContent.length
+          })
+          
+          const { data: { session } } = await supabaseClient.auth.getSession()
+          if (session?.access_token) {
+            console.log('Session found, calling notify-message function...')
+            
+            // Call notify-message Edge Function
+            const notifyResponse = await fetch(
+              `${config.supabase.url}/functions/v1/notify-message`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'apikey': config.supabase.anonKey,
+                },
+                body: JSON.stringify({
+                  conversation_id: selectedConversationId,
+                  sender_id: currentUserId,
+                  message_content: messageContent,
+                }),
+              }
+            )
+
+            console.log('Notification response status:', notifyResponse.status)
+            
+            if (!notifyResponse.ok) {
+              const errorText = await notifyResponse.text()
+              console.warn('Failed to send message notification email:', {
+                status: notifyResponse.status,
+                error: errorText
+              })
+              // Don't fail the message send if notification fails
+            } else {
+              const responseData = await notifyResponse.json().catch(() => ({}))
+              console.log('Notification sent successfully:', responseData)
+            }
+          } else {
+            console.warn('No session found, cannot send notification')
+          }
+        } catch (notifyError) {
+          console.error('Error calling notify-message function:', notifyError)
+          // Don't fail the message send if notification fails
+        }
+
         // Fetch sender info
         const { data: senderData } = await supabaseClient
           .from('users')

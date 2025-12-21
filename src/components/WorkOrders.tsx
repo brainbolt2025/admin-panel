@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FC } from 'react';
-import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList } from 'lucide-react';
+import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList, Bell } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
@@ -408,12 +408,13 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
-      // Fetch technicians from the same property
+      // Fetch only approved technicians from the same property
       const { data, error } = await supabaseClient
         .from('users')
         .select('id, name, email')
         .eq('property_id', workOrder.property_id)
-        .eq('role', 'technician');
+        .eq('role', 'technician')
+        .eq('approved', true);
 
       if (error) throw error;
 
@@ -739,57 +740,76 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
 
   return (
     <div className="p-6 w-full">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Work Orders</h1>
-
-      {/* Search and Filters */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-end gap-4">
-        {/* Search Bar */}
-        <div className="relative flex-1 md:max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search work orders..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-          />
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-4">
-          <div className="relative w-48">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-            >
-              <option value="All">Status: All</option>
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
-              <option value="Canceled">Canceled</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+      <div className="bg-white rounded-xl shadow-sm">
+        {/* Topbar - Search and Alerts */}
+        <div className="flex items-center justify-between px-6 py-4">
+          {/* Left side - Search */}
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search work orders..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+              />
+            </div>
           </div>
 
-          <div className="relative w-48">
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-            >
-              <option value="All">Priority: All</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
+          {/* Right side - Alerts (for PM only) */}
+          {isPM && (
+            <div className="flex items-center space-x-2">
+              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                <Bell className="w-4 h-4 text-gray-600" />
+              </div>
+              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
+            </div>
+          )}
         </div>
-      </div>
+
+        {/* Content Section */}
+        <div className="px-6 pb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">Work Orders</h1>
+
+          {/* Filters */}
+          <div className="mb-6 flex flex-col md:flex-row md:items-end gap-4">
+            <div className="flex gap-4">
+              <div className="relative w-48">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="All">Status: All</option>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Canceled">Canceled</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+
+              <div className="relative w-48">
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                >
+                  <option value="All">Priority: All</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          </div>
 
       {/* Work Orders Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden w-full">
+      <div className="overflow-hidden w-full">
         {loadingWorkOrders ? (
           <div className="text-center py-12">
             <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -1273,6 +1293,8 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

@@ -15,6 +15,7 @@ const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialP
   const [formData, setFormData] = useState({
     name: initialName,
     email: initialEmail,
+    confirmEmail: initialEmail,
     password: '',
     propertyName: initialPropertyName
   });
@@ -27,6 +28,7 @@ const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialP
       ...prev,
       name: initialName || prev.name,
       email: initialEmail || prev.email,
+      confirmEmail: initialEmail || prev.confirmEmail,
       propertyName: initialPropertyName || prev.propertyName
     }));
   }, [initialName, initialEmail, initialPropertyName]);
@@ -91,6 +93,13 @@ const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialP
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+
+    // Validate email confirmation
+    if (formData.email !== formData.confirmEmail) {
+      setErrorMessage('Email addresses do not match. Please check and try again.');
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       // Step 1: Create user account and profile via Edge Function
@@ -327,6 +336,35 @@ const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialP
             </div>
           </div>
 
+          {/* Confirm Email Field */}
+          <div>
+            <label htmlFor="confirmEmail" className="block text-sm font-medium text-gray-700 mb-2">
+              Confirm Email Address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="email"
+                id="confirmEmail"
+                name="confirmEmail"
+                value={formData.confirmEmail}
+                onChange={handleInputChange}
+                required
+                className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-colors ${
+                  formData.confirmEmail && formData.email !== formData.confirmEmail
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-gray-300'
+                }`}
+                placeholder="Confirm your email address"
+              />
+            </div>
+            {formData.confirmEmail && formData.email !== formData.confirmEmail && (
+              <p className="mt-1 text-xs text-red-600">
+                Email addresses do not match
+              </p>
+            )}
+          </div>
+
           {/* Password Field */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
@@ -369,7 +407,7 @@ const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialP
           {/* Subscribe Button */}
           <button
             type="submit"
-            disabled={isSubmitting || !formData.name || !formData.propertyName || !formData.email || !formData.password}
+            disabled={isSubmitting || !formData.name || !formData.propertyName || !formData.email || !formData.confirmEmail || !formData.password || formData.email !== formData.confirmEmail}
             className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {isSubmitting ? (

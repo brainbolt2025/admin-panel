@@ -411,7 +411,7 @@ serve(async (req) => {
       // Continue - PM notification failure shouldn't block technician creation
     }
 
-    // Step 5: Generate verification link and send custom verification email
+    // Step 5: Generate verification link and send email (same approach as tenants)
     console.log('Step 5: Sending verification email to technician')
     
     let emailSent = false
@@ -419,7 +419,6 @@ serve(async (req) => {
     
     try {
       // Determine redirect URL based on environment
-      // For mobile apps (technicians), use deep link scheme or public URL
       const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
       const isTestMode = stripeSecretKey.startsWith('sk_test_')
       
@@ -430,19 +429,16 @@ serve(async (req) => {
       // Determine redirect URL
       let redirectTo: string
       if (APP_DEEP_LINK_SCHEME) {
-        // Use deep link scheme for mobile app
         redirectTo = `${APP_DEEP_LINK_SCHEME}auth/verified`
       } else if (APP_URL) {
-        // Use configured app URL
         redirectTo = `${APP_URL}/auth/verified`
       } else {
-        // Fallback: use admin panel URL (public web URL that can handle verification)
         redirectTo = 'https://admin.asine.app/auth/verified'
       }
       
       console.log('Generating verification link with redirect_to:', redirectTo)
       
-      // Use Supabase Admin API to generate a confirmation link
+      // Use Supabase Admin API to generate a confirmation link (same as tenants)
       const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
         method: 'POST',
         headers: {
@@ -471,10 +467,7 @@ serve(async (req) => {
         } else {
           console.log('Found action_link:', actionLink.substring(0, 100) + '...')
           
-          // Use Supabase's action_link directly without modifying redirect_to
-          // The action_link already points to Supabase's verification endpoint
-          // which will verify the email automatically when clicked
-          // The redirect_to in Supabase's action_link is already configured correctly
+          // Use Supabase's action_link directly (same as tenants)
           const verifyLink = actionLink
           
           console.log('Verification link configured:', {
@@ -482,7 +475,7 @@ serve(async (req) => {
             note: 'Using Supabase action_link directly for email verification'
           })
           
-          // Send email using Mailgun
+          // Send email using Mailgun (same approach as tenants)
           const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
           const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
           const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
@@ -575,41 +568,13 @@ If you didn't create an account, please ignore this email.`
         }
       }
     } catch (error) {
-      console.error('Error in email sending process:', error)
+      console.error('Error in email verification process:', error)
       emailError = error instanceof Error ? error.message : 'Unknown error sending verification email'
     }
 
-    const serviceRoleResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: supabaseServiceKey,
-        Authorization: `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({ email, password }),
-    })
-
-    if (!serviceRoleResponse.ok) {
-      console.error('Error fetching technician access token:', await serviceRoleResponse.text())
-      return new Response(
-        JSON.stringify({
-          success: true,
-          user_id: authUserId,
-          email,
-          name,
-          property_id: finalPropertyId,
-          property_name: finalPropertyName,
-          approved: false,
-          warning: 'Technician created but failed to fetch access token.',
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    const tokenResult = await serviceRoleResponse.json()
+    // Note: We don't fetch an access token here because the email must be confirmed first
+    // The technician will need to verify their email, then sign in normally to get a token
+    console.log('Skipping token fetch - technician must verify email first before signing in')
 
     return new Response(
       JSON.stringify({
@@ -620,15 +585,11 @@ If you didn't create an account, please ignore this email.`
         property_id: finalPropertyId,
         property_name: finalPropertyName,
         approved: false,
-        access_token: tokenResult.access_token,
-        refresh_token: tokenResult.refresh_token,
-        token_type: tokenResult.token_type,
-        expires_in: tokenResult.expires_in,
         email_sent: emailSent,
         email_error: emailError || undefined,
         message: emailSent 
           ? 'Technician account created successfully. A verification email has been sent. Please check your email to verify your account before signing in.'
-          : 'Technician account created successfully. ' + (emailError ? 'However, there was an issue sending the verification email. ' + emailError + '.' : 'A verification email may have been sent.') + ' Your account awaits PM approval.',
+          : 'Technician account created successfully. ' + (emailError ? 'However, there was an issue sending the verification email. ' + emailError + '.' : 'A verification email may have been sent.') + ' Please verify your email before signing in. Your account awaits PM approval after email verification.',
       }),
       {
         status: 200,

@@ -18,8 +18,7 @@ interface InvitePMProps {
 const InvitePM = ({ onBack }: InvitePMProps) => {
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
-    assignedProperties: [] as string[]
+    email: ''
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,34 +51,11 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
     }
   ];
 
-  const availableProperties = [
-    'Maple Residences',
-    'Riverside North',
-    'City Center',
-    'Harbor View',
-    'Lakeside Oaks',
-    'Sunset Towers',
-    'Garden Plaza',
-    'Downtown Complex',
-    'Riverside Apartments',
-    'Midtown Plaza',
-    'Park Lane'
-  ];
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
-    }));
-  };
-
-  const handlePropertyToggle = (property: string) => {
-    setFormData(prev => ({
-      ...prev,
-      assignedProperties: prev.assignedProperties.includes(property)
-        ? prev.assignedProperties.filter(p => p !== property)
-        : [...prev.assignedProperties, property]
     }));
   };
 
@@ -121,8 +97,7 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
         // Reset form
         setFormData({
           name: '',
-          email: '',
-          assignedProperties: []
+          email: ''
         });
       } else {
         console.error('Failed to invite user:', data);
@@ -232,38 +207,6 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
                   placeholder="Enter email address"
                 />
               </div>
-            </div>
-
-            {/* Assigned Properties */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Assigned Properties
-              </label>
-              <div className="border border-gray-300 rounded-lg p-4 max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {availableProperties.map((property) => (
-                    <label
-                      key={property}
-                      className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.assignedProperties.includes(property)}
-                        onChange={() => handlePropertyToggle(property)}
-                        className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                      />
-                      <span className="text-sm text-gray-700">{property}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {formData.assignedProperties.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-sm text-gray-600">
-                    Selected: {formData.assignedProperties.join(', ')}
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Submit Button */}

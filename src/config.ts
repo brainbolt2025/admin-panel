@@ -40,6 +40,9 @@ export const config = {
       : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/cancel-subscription',
     reactivateSubscription: isDevelopment
       ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/reactivate-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/reactivate-subscription'
+      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/reactivate-subscription',
+    renewSubscription: isDevelopment
+      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/renew-subscription'
+      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/renew-subscription'
   }
 }

@@ -171,6 +171,17 @@ serve(async (req) => {
           })
           .eq('id', user_id)
 
+        // Automatically confirm email in Supabase Auth to allow login without verification
+        try {
+          await supabaseAdmin.auth.admin.updateUserById(user_id, {
+            email_confirm: true,
+          })
+          console.log('✅ Email automatically confirmed for PM user:', user_id)
+        } catch (authError) {
+          console.warn('Could not auto-confirm email in Auth:', authError)
+          // Don't fail the webhook if this doesn't work - subscription update is primary
+        }
+
         if (updateError) {
           console.error('Error updating user:', updateError)
           return new Response(
