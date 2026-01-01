@@ -719,7 +719,7 @@ const pendingWorkOrdersContextValue = useMemo(
           onActiveItemChange={setActiveItem}
         />
         
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col lg:ml-64">
           {!['Dashboard', 'Work Orders', 'Tenants', 'Technicians', 'Profile'].includes(activeItem) && (
             <Topbar 
               onMenuToggle={toggleSidebar} 

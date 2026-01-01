@@ -17,7 +17,6 @@ interface InvitePMProps {
 
 const InvitePM = ({ onBack }: InvitePMProps) => {
   const [formData, setFormData] = useState({
-    name: '',
     email: ''
   });
 
@@ -71,6 +70,13 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
         return;
       }
 
+      const requestBody = {
+        email: formData.email,
+        role: 'pm'
+      };
+      
+      console.log('Sending invite request:', requestBody);
+
       const response = await fetch(
         `${config.supabase.url}/functions/v1/invite-pm`,
         {
@@ -80,11 +86,7 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
             'Authorization': `Bearer ${accessToken}`,
             'apikey': config.supabase.anonKey
           },
-          body: JSON.stringify({
-            email: formData.email,
-            name: formData.name,
-            role: 'pm'
-          })
+          body: JSON.stringify(requestBody)
         }
       );
 
@@ -96,7 +98,6 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
         
         // Reset form
         setFormData({
-          name: '',
           email: ''
         });
       } else {
@@ -170,25 +171,6 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name Field */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  placeholder="Enter full name"
-                />
-              </div>
-            </div>
-
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -212,7 +194,7 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isSubmitting || !formData.name || !formData.email}
+              disabled={isSubmitting || !formData.email}
               className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isSubmitting ? (

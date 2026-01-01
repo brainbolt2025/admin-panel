@@ -12,3 +12,5 @@ DROP TRIGGER IF EXISTS trigger_notify_message_on_insert ON public.messages;
 
 
 
+
+

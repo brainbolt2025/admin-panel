@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { Grid3X3, Shield, Building, FileText, X, ClipboardList, Users, Wrench, User } from 'lucide-react';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+import AsineLogo from './AsineLogo';
 
 export interface SidebarProps {
   isOpen: boolean;
@@ -71,28 +72,14 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
       <div className={`
         fixed top-0 left-0 h-full z-50 transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
+        lg:translate-x-0 lg:fixed lg:z-auto
         w-64
       `}>
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full" style={{ marginTop: '-50px', position: 'relative' }}>
           {/* Header */}
-          <div className="flex items-center justify-between p-6">
-            <div className="flex items-center space-x-3">
-              {/* Circular logo */}
-              <div className="w-10 h-10 bg-teal-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-bold text-sm">
-                  {isPM ? 'PM' : 'SA'}
-                </span>
-              </div>
-              {/* Stacked text */}
-              <div className="flex flex-col">
-                <h1 className="text-lg font-bold text-gray-800 leading-tight">
-                  {isPM ? 'Property' : 'Super'}
-                </h1>
-                <h1 className="text-lg font-bold text-gray-800 leading-tight">
-                  {isPM ? 'Manager' : 'Admin'}
-                </h1>
-              </div>
+          <div className="flex items-start justify-between px-4 pt-0 pb-0" style={{ marginBottom: '-40px' }}>
+            <div style={{ paddingBottom: '20px' }}>
+              <AsineLogo size="lg" />
             </div>
             <div
               onClick={onToggle}
@@ -103,7 +90,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 pb-6 overflow-y-auto">
+          <nav className="flex-1 px-4 pt-0 pb-6 overflow-y-auto" style={{ marginTop: '-40px' }}>
             <ul className="space-y-1">
               {navigationItems.map((item) => {
                 const Icon = item.icon;

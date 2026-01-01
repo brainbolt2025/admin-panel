@@ -10,7 +10,7 @@ const corsHeaders = {
 
 interface InviteRequest {
   email: string
-  name: string
+  name?: string
   role: string
 }
 
@@ -75,11 +75,25 @@ serve(async (req) => {
     */
 
     // Parse request body
-    const { email, name, role }: InviteRequest = await req.json()
-
-    if (!email || !name || !role) {
+    let requestBody: InviteRequest
+    try {
+      requestBody = await req.json()
+    } catch (error) {
+      console.error('Error parsing request body:', error)
       return new Response(
-        JSON.stringify({ code: 400, message: 'Missing required fields' }),
+        JSON.stringify({ code: 400, message: 'Invalid request body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { email, name, role } = requestBody
+    
+    console.log('Received invite request:', { email, name, role })
+
+    if (!email || !role) {
+      console.error('Missing required fields:', { email: !!email, role: !!role })
+      return new Response(
+        JSON.stringify({ code: 400, message: 'Missing required fields: email and role are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -96,7 +110,9 @@ serve(async (req) => {
     const siteUrl = Deno.env.get('SITE_URL') ?? 'https://admin.asine.app'
     const isLocal = siteUrl.includes('localhost')
     const subscribeBaseUrl = isLocal ? 'http://localhost:5173' : 'https://admin.asine.app'
-    const subscribeLink = `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`
+    const subscribeLink = name 
+      ? `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`
+      : `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}`
 
     const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || ''
     const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
@@ -118,30 +134,32 @@ serve(async (req) => {
       )
     }
 
+    const greeting = name ? `Hi ${name},` : 'Hi there,'
+    
     const htmlBody = `
       <html>
         <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <p>Hi ${name},</p>
-          <p>You’ve been invited to manage your properties with <strong>Asine</strong>.</p>
+          <p>${greeting}</p>
+          <p>You've been invited to manage your properties with <strong>Asine</strong>.</p>
           <p>Click the button below to activate your account and start your subscription.</p>
           <p style="margin: 24px 0;">
             <a href="${subscribeLink}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 9999px; text-decoration: none; font-weight: bold;">
               Activate &amp; Choose Plan
             </a>
           </p>
-          <p>The setup takes less than 2 minutes — once you subscribe, you’ll gain full access to your dashboard.</p>
+          <p>The setup takes less than 2 minutes — once you subscribe, you'll gain full access to your dashboard.</p>
           <p style="margin-top: 32px;">Welcome aboard,<br/>The Asine Team</p>
         </body>
       </html>
     `
 
-    const textBody = `Hi ${name},
+    const textBody = `${greeting}
 
-You’ve been invited to manage your properties with Asine.
+You've been invited to manage your properties with Asine.
 Activate your account and choose your plan:
 ${subscribeLink}
 
-The setup takes less than 2 minutes — once you subscribe, you’ll gain full access to your dashboard.
+The setup takes less than 2 minutes — once you subscribe, you'll gain full access to your dashboard.
 
 The Asine Team`
 
@@ -179,7 +197,7 @@ The Asine Team`
         success: true,
         data: {
           email,
-          name,
+          name: name || null,
           role,
           activation_link: subscribeLink,
         }

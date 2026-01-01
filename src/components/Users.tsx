@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar, Upload, Camera, Info, MapPin, Shield, Clock, Bell } from 'lucide-react';
+import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar, Upload, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
+import InviteNewTenants from './InviteNewTenants';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -72,6 +73,9 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
+
+  // State for invite new tenants form
+  const [showInviteNewTenants, setShowInviteNewTenants] = useState(false);
 
   // Update search term when selectedTenantFilter prop changes
   useEffect(() => {
@@ -642,6 +646,11 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     });
   };
 
+  // Show invite form if state is set
+  if (showInviteNewTenants) {
+    return <InviteNewTenants onBack={() => setShowInviteNewTenants(false)} />;
+  }
+
   return (
     <div className="p-6">
       <div className="bg-white rounded-xl shadow-sm">
@@ -676,7 +685,18 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
         {/* Content Section */}
         <div className="px-6 pb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Tenants</h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
+            {isPM && (
+              <button
+                onClick={() => setShowInviteNewTenants(true)}
+                className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                Invite New Tenants
+              </button>
+            )}
+          </div>
 
           {/* Filters */}
           <div className="mb-6 space-y-4">

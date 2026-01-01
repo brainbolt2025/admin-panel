@@ -180,25 +180,61 @@ serve(async (req) => {
     // Only send email notifications when recipient is offline or inactive (> 5 minutes)
     const OFFLINE_THRESHOLD_MINUTES = 5
     const isRecipientOnline = recipient.is_online === true
-    const lastSeen = recipient.last_seen ? new Date(recipient.last_seen) : null
-    const minutesSinceLastSeen = lastSeen
-      ? (Date.now() - lastSeen.getTime()) / (1000 * 60)
-      : Infinity
     
-    const shouldSendEmail = !isRecipientOnline || minutesSinceLastSeen > OFFLINE_THRESHOLD_MINUTES
-
-    if (!shouldSendEmail) {
-      console.log(`Skipping email notification - recipient is online and active (last seen ${Math.round(minutesSinceLastSeen)} minutes ago)`)
+    // Debug logging
+    console.log(`Recipient online status check:`, {
+      recipient_id: recipient.id,
+      recipient_role: recipient.role,
+      is_online: recipient.is_online,
+      last_seen: recipient.last_seen,
+      isRecipientOnline
+    })
+    
+    // Check last_seen to determine if user is active (even if is_online is null/undefined)
+    let minutesSinceLastSeen = Infinity
+    if (recipient.last_seen) {
+      const lastSeen = new Date(recipient.last_seen)
+      minutesSinceLastSeen = (Date.now() - lastSeen.getTime()) / (1000 * 60)
+    }
+    
+    // If recipient is marked as online OR was active recently (within threshold), skip email
+    if (isRecipientOnline) {
+      // Explicitly marked as online
+      if (recipient.last_seen && minutesSinceLastSeen <= OFFLINE_THRESHOLD_MINUTES) {
+        // Online and active within threshold - definitely skip
+        console.log(`✅ Skipping email notification - recipient (${recipient.role}) is online and active (last seen ${Math.round(minutesSinceLastSeen)} minutes ago)`)
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Notification skipped - recipient is online and active' 
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } else {
+        // Online but no last_seen or inactive - still skip (they're marked online)
+        console.log(`✅ Skipping email notification - recipient (${recipient.role}) is online (last_seen: ${recipient.last_seen ? Math.round(minutesSinceLastSeen) + ' minutes ago' : 'not available'})`)
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Notification skipped - recipient is online' 
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    } else if (recipient.last_seen && minutesSinceLastSeen <= OFFLINE_THRESHOLD_MINUTES) {
+      // Not marked as online, but was active recently - treat as online and skip email
+      console.log(`✅ Skipping email notification - recipient (${recipient.role}) was active recently (last seen ${Math.round(minutesSinceLastSeen)} minutes ago, is_online: ${recipient.is_online})`)
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'Notification skipped - recipient is online and active' 
+          message: 'Notification skipped - recipient was active recently' 
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    } else {
+      // Offline or inactive - send email
+      console.log(`📧 Sending email notification - recipient (${recipient.role}) is offline or inactive (is_online: ${recipient.is_online}, last seen ${recipient.last_seen ? Math.round(minutesSinceLastSeen) : 'never'} minutes ago)`)
     }
-
-    console.log(`Sending email notification - recipient is ${isRecipientOnline ? 'online but inactive' : 'offline'} (last seen ${lastSeen ? Math.round(minutesSinceLastSeen) : 'never'} minutes ago)`)
 
     // Fetch work order details for context
     let workOrderTitle = 'Work Order'
