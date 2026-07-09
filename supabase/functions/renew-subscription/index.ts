@@ -151,18 +151,13 @@ serve(async (req) => {
       subscriptionToUpdate = sortedSubs.find(sub => updateableStatuses.includes(sub.status)) || null
     }
 
-    // Check if subscription is cancelled and past due date
-    const isCancelled = userData.subscription_status === 'canceled'
-    const cancelAt = userData.cancel_at ? new Date(userData.cancel_at) : null
-    const isPastDueDate = cancelAt && cancelAt < new Date()
-    const needsPayment = isCancelled && isPastDueDate
+    // Determine the site URL based on environment
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
 
-    // If subscription is cancelled and past due date, create Checkout session to collect payment
-    if (needsPayment || (!subscriptionToUpdate && mostRecentSubscription?.status === 'canceled')) {
-      // Determine the site URL based on environment
-      const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
-      
-      // Create a Stripe Checkout Session for subscription renewal
+    // Helper: create a Stripe Checkout session that collects a payment method
+    // and (re)starts the subscription. Used whenever we can't charge the
+    // customer directly (no default payment method, or a fully cancelled sub).
+    const createRenewalCheckout = async () => {
       const session = await stripe.checkout.sessions.create({
         customer: userData.stripe_customer_id,
         mode: 'subscription',
@@ -183,7 +178,7 @@ serve(async (req) => {
         billing_address_collection: 'required',
       })
 
-      console.log(`✅ Created Checkout session for cancelled subscription renewal: ${session.id}`)
+      console.log(`✅ Created Checkout session for subscription renewal: ${session.id}`)
 
       return new Response(
         JSON.stringify({
@@ -196,50 +191,97 @@ serve(async (req) => {
       )
     }
 
-    // If subscription can be updated, update it directly
-    let updatedSubscription: Stripe.Subscription
+    // Check if subscription is cancelled and past due date
+    const isCancelled = userData.subscription_status === 'canceled'
+    const cancelAt = userData.cancel_at ? new Date(userData.cancel_at) : null
+    const isPastDueDate = cancelAt && cancelAt < new Date()
+    const needsPayment = isCancelled && isPastDueDate
 
-    if (subscriptionToUpdate) {
-      // Update existing subscription - use subscription.update() as requested
-      const subscriptionItem = subscriptionToUpdate.items.data[0]
-      
-      if (!subscriptionItem) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Subscription has no items' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    // Determine whether the customer has a usable default payment method.
+    // Creating/updating a subscription via the API charges immediately, which
+    // fails with "no attached payment source or default payment method" when
+    // the customer has none — in that case we must collect a card via Checkout.
+    let hasDefaultPaymentMethod = false
+    try {
+      const customer = await stripe.customers.retrieve(userData.stripe_customer_id)
+      if (customer && !(customer as { deleted?: boolean }).deleted) {
+        const customerObj = customer as Stripe.Customer
+        hasDefaultPaymentMethod = Boolean(
+          customerObj.invoice_settings?.default_payment_method || customerObj.default_source,
         )
       }
+    } catch (pmError) {
+      console.warn('Could not verify customer payment method; will route to Checkout:', pmError)
+      hasDefaultPaymentMethod = false
+    }
 
-      // Update the subscription with the new price using subscription.update()
-      updatedSubscription = await stripe.subscriptions.update(subscriptionToUpdate.id, {
-        items: [{
-          id: subscriptionItem.id,
-          price: priceId,
-        }],
-        cancel_at_period_end: false, // Remove any cancellation flags
-        metadata: {
-          user_id: user.id,
-          plan: plan,
-          email: userData.email || '',
-        },
-      })
+    // Route to Checkout when we cannot safely charge the customer directly:
+    // - the cancellation date has already passed (needsPayment), OR
+    // - the customer has no default payment method, OR
+    // - there is no updateable subscription and the latest one is cancelled.
+    if (
+      needsPayment ||
+      !hasDefaultPaymentMethod ||
+      (!subscriptionToUpdate && mostRecentSubscription?.status === 'canceled')
+    ) {
+      return await createRenewalCheckout()
+    }
 
-      console.log(`✅ Updated existing subscription ${updatedSubscription.id} with new plan ${plan} using subscription.update()`)
-    } else {
-      // No updateable subscription found and not cancelled - create new subscription
-      updatedSubscription = await stripe.subscriptions.create({
-        customer: userData.stripe_customer_id,
-        items: [{
-          price: priceId,
-        }],
-        metadata: {
-          user_id: user.id,
-          plan: plan,
-          email: userData.email || '',
-        },
-      })
+    // The customer has a default payment method, so charge directly.
+    let updatedSubscription: Stripe.Subscription
 
-      console.log(`✅ Created new subscription ${updatedSubscription.id} with plan ${plan}`)
+    try {
+      if (subscriptionToUpdate) {
+        // Update existing subscription - use subscription.update() as requested
+        const subscriptionItem = subscriptionToUpdate.items.data[0]
+
+        if (!subscriptionItem) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Subscription has no items' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          )
+        }
+
+        // Update the subscription with the new price using subscription.update()
+        updatedSubscription = await stripe.subscriptions.update(subscriptionToUpdate.id, {
+          items: [{
+            id: subscriptionItem.id,
+            price: priceId,
+          }],
+          cancel_at_period_end: false, // Remove any cancellation flags
+          metadata: {
+            user_id: user.id,
+            plan: plan,
+            email: userData.email || '',
+          },
+        })
+
+        console.log(`✅ Updated existing subscription ${updatedSubscription.id} with new plan ${plan} using subscription.update()`)
+      } else {
+        // No updateable subscription found - create a new one
+        updatedSubscription = await stripe.subscriptions.create({
+          customer: userData.stripe_customer_id,
+          items: [{
+            price: priceId,
+          }],
+          metadata: {
+            user_id: user.id,
+            plan: plan,
+            email: userData.email || '',
+          },
+        })
+
+        console.log(`✅ Created new subscription ${updatedSubscription.id} with plan ${plan}`)
+      }
+    } catch (subError) {
+      // Safety net: if Stripe still reports a missing/invalid payment method,
+      // fall back to collecting one via Checkout instead of failing the request.
+      const message = subError instanceof Error ? subError.message : String(subError)
+      if (/payment (source|method)|default payment/i.test(message)) {
+        console.warn('Direct subscription charge failed due to payment method; routing to Checkout:', message)
+        return await createRenewalCheckout()
+      }
+      throw subError
     }
 
     // Update database - set subscription as active

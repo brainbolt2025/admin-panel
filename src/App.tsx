@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -14,7 +14,9 @@ import Profile from './components/Profile'
 import SubscriptionCancellationBanner from './components/SubscriptionCancellationBanner'
 import RenewSubscription from './components/RenewSubscription'
 import EmailVerificationBanner from './components/EmailVerificationBanner'
-import { getAuthenticatedSupabase, supabase } from './lib/supabase'
+import Waitlist from './components/Waitlist'
+import ResetPassword from './components/ResetPassword'
+import { getAuthenticatedSupabase, supabase, isPasswordRecoveryLanding } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 
 interface UserProfile {
@@ -26,6 +28,9 @@ interface UserProfile {
   property_id?: string | null
   property_name?: string | null
   email_verified?: boolean | null
+  subscription_status?: string | null
+  subscribed?: boolean | null
+  cancel_at?: string | null
 }
 
 function App() {
@@ -36,6 +41,8 @@ function App() {
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
   const [showRenewSubscription, setShowRenewSubscription] = useState(false)
+  const [showResetPassword, setShowResetPassword] = useState(false)
+  const paymentPollStartedRef = useRef(false)
   const [subscriptionPrefill, setSubscriptionPrefill] = useState({
     name: '',
     email: '',
@@ -59,6 +66,30 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to parse URL for subscription prefill:', error)
+    }
+  }, [])
+
+  // Detect a password-recovery landing (from the reset-password email link).
+  // `isPasswordRecoveryLanding` is captured in supabase.ts *before* the client
+  // consumes and clears the recovery hash, so this works whether the email
+  // redirects to "/reset-password" or to the bare site root.
+  useEffect(() => {
+    try {
+      const isRecoveryPath = window.location.pathname.includes('/reset-password')
+      const searchParams = new URLSearchParams(window.location.search)
+      const hashType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type')
+      const isRecovery =
+        isPasswordRecoveryLanding ||
+        isRecoveryPath ||
+        searchParams.get('type') === 'recovery' ||
+        hashType === 'recovery'
+
+      if (isRecovery) {
+        setShowResetPassword(true)
+        setIsCheckingAuth(false)
+      }
+    } catch (error) {
+      console.error('Failed to parse URL for password recovery:', error)
     }
   }, [])
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null)
@@ -134,6 +165,9 @@ function App() {
               // Show renewal page if no active subscription
               setShowRenewSubscription(true)
             }
+          } else if (hasActiveSubscription || profile.subscription_status === 'active') {
+            // Subscription is active again (e.g. after a successful renewal) - leave the renewal flow
+            setShowRenewSubscription(false)
           }
         }
         
@@ -249,6 +283,13 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      // A recovery link establishes a temporary session; show the reset screen
+      // instead of dropping the user into the dashboard.
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowResetPassword(true)
+        setIsCheckingAuth(false)
+      }
+
       if (session) {
         localStorage.setItem('access_token', session.access_token)
         if (session.refresh_token) {
@@ -281,22 +322,50 @@ function App() {
     const paymentStatus = urlParams.get('payment')
     const isRenewal = urlParams.get('renewal') === 'true'
     
-    if (paymentStatus === 'success' && sessionId) {
-      console.log('App: Payment successful, session ID:', sessionId, 'Renewal:', isRenewal)
-      
-      // If this is a renewal and user is logged in, reload profile to update subscription status
-      if (isRenewal && userProfile?.id) {
-        loadUserProfile(userProfile.id).catch(console.error)
-        // Clear URL parameters
-        if (window.history.replaceState) {
-          const url = new URL(window.location.href)
-          url.searchParams.delete('session_id')
-          url.searchParams.delete('payment')
-          url.searchParams.delete('renewal')
-          window.history.replaceState({}, document.title, url.toString())
-        }
+    if (paymentStatus === 'success' && sessionId && isRenewal) {
+      console.log('App: Renewal payment successful, session ID:', sessionId)
+
+      // Clear URL parameters so a refresh doesn't reprocess them
+      if (window.history.replaceState) {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('session_id')
+        url.searchParams.delete('payment')
+        url.searchParams.delete('renewal')
+        window.history.replaceState({}, document.title, url.toString())
       }
-      // For non-renewal payments, let Login component handle it
+
+      // The subscription is finalized by the Stripe webhook, which can lag a
+      // moment behind this redirect. Poll the profile until it reflects the
+      // active subscription so the user lands on the dashboard instead of being
+      // left on the renewal page.
+      if (!paymentPollStartedRef.current) {
+        paymentPollStartedRef.current = true
+
+        const finalizeAfterPayment = async () => {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          const uid = session?.user?.id
+          if (!uid) return
+
+          for (let attempt = 0; attempt < 8; attempt++) {
+            try {
+              const profile = await loadUserProfile(uid)
+              if (profile?.subscription_status === 'active') {
+                console.log('App: Subscription active after renewal, showing dashboard')
+                return
+              }
+            } catch (error) {
+              console.error('Error reloading profile after renewal payment:', error)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+          }
+          console.warn('App: Subscription still not active after polling; the Stripe webhook may not have processed the renewal yet.')
+        }
+
+        finalizeAfterPayment()
+      }
+      // For non-renewal payments, let the Login component handle the redirect
     } else if (paymentStatus === 'cancelled') {
       console.log('App: Payment was cancelled')
       // Clear URL parameters
@@ -307,7 +376,7 @@ function App() {
         window.history.replaceState({}, document.title, url.toString())
       }
     }
-  }, [userProfile, loadUserProfile])
+  }, [loadUserProfile])
 
   // Initialize auth state on first load
   useEffect(() => {
@@ -637,6 +706,8 @@ const pendingWorkOrdersContextValue = useMemo(
         return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
       case 'PM Accounts':
         return <PropertyManagers />
+      case 'Waitlist':
+        return <Waitlist />
       case 'Work Orders':
         return <WorkOrders selectedWorkOrderId={selectedWorkOrderId} onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)} />
       case 'Tenants':
@@ -650,6 +721,20 @@ const pendingWorkOrdersContextValue = useMemo(
       default:
         return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
     }
+  }
+
+  // Show password-reset screen when arriving from a recovery email link
+  if (showResetPassword) {
+    return (
+      <ResetPassword
+        onComplete={() => {
+          setShowResetPassword(false)
+          if (window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.origin + '/')
+          }
+        }}
+      />
+    )
   }
 
   // Show loading state while checking authentication
@@ -734,7 +819,7 @@ const pendingWorkOrdersContextValue = useMemo(
               {userProfile.email_verified === false && (
                 <EmailVerificationBanner 
                   email={userProfile.email} 
-                  emailVerified={userProfile.email_verified === true}
+                  emailVerified={false}
                   userName={userProfile.name}
                   userId={userProfile.id}
                 />

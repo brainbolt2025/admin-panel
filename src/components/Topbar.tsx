@@ -20,7 +20,7 @@ interface WorkOrder {
 const Topbar = ({ onMenuToggle, onNewPMAccount, onLogout, onNavigateToWorkOrder }: TopbarProps) => {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [unseenWorkOrders, setUnseenWorkOrders] = useState<WorkOrder[]>([]);
-  const [loadingAlerts, setLoadingAlerts] = useState(false);
+  const [loadingAlerts] = useState(false);
   // Get user role from localStorage
   const getUserRole = () => {
     try {

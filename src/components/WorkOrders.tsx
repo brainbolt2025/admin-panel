@@ -191,7 +191,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   // Register refresh function in context and fetch on mount
   useEffect(() => {
     if (isPM) {
-      setRefreshWorkOrdersList(() => fetchWorkOrders);
+      setRefreshWorkOrdersList(fetchWorkOrders);
       fetchWorkOrders();
     }
 

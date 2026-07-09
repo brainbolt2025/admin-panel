@@ -16,6 +16,8 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // Check if user just completed payment
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
@@ -101,6 +103,59 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
     // Clear error message when user starts typing
     if (errorMessage) {
       setErrorMessage('');
+    }
+    if (resetMessage) {
+      setResetMessage(null);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setResetMessage(null);
+    setErrorMessage('');
+
+    const email = formData.email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!email) {
+      setResetMessage({ type: 'error', text: 'Enter your email address above, then click "Forgot password?" again.' });
+      return;
+    }
+    if (!emailRegex.test(email)) {
+      setResetMessage({ type: 'error', text: 'Please enter a valid email address to reset your password.' });
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      const response = await fetch(`${config.supabase.url}/functions/v1/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': config.supabase.anonKey,
+          'Authorization': `Bearer ${config.supabase.anonKey}`,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      console.log('Forgot password response:', { status: response.status, data });
+
+      if (response.ok && data.success) {
+        setResetMessage({
+          type: 'success',
+          text: data.message || 'If an account exists with this email, a password reset link has been sent.',
+        });
+      } else {
+        setResetMessage({
+          type: 'error',
+          text: data.error || 'Unable to send the reset email. Please try again later.',
+        });
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      setResetMessage({ type: 'error', text: 'An error occurred. Please try again later.' });
+    } finally {
+      setIsSendingReset(false);
     }
   };
 
@@ -294,14 +349,22 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
 
             {/* Forgot Password Link */}
             <div className="text-left">
-              <a
-                href="#"
-                className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors"
-                onClick={(e) => e.preventDefault()}
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={isSendingReset}
+                className="text-sm text-gray-500 hover:text-gray-700 hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Forgot password?
-              </a>
+                {isSendingReset ? 'Sending reset link...' : 'Forgot password?'}
+              </button>
             </div>
+
+            {/* Reset Password Message */}
+            {resetMessage && (
+              <div className={`text-sm text-center ${resetMessage.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                {resetMessage.text}
+              </div>
+            )}
 
             {/* Sign In Button */}
             <button

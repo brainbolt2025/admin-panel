@@ -460,6 +460,11 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
             .single();
 
           if (!error && newMessageData) {
+            // Supabase returns sender as an array even for single relations
+            const senderData = Array.isArray(newMessageData.sender) 
+              ? newMessageData.sender[0] 
+              : newMessageData.sender;
+            
             const newMessage: Message = {
               id: newMessageData.id,
               conversation_id: newMessageData.conversation_id,
@@ -468,10 +473,10 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
               created_at: newMessageData.created_at,
               attachment_url: newMessageData.attachment_url,
               attachment_type: newMessageData.attachment_type,
-              sender: {
-                name: newMessageData.sender?.name || 'Unknown',
-                role: newMessageData.sender?.role || 'unknown',
-              },
+              sender: senderData ? {
+                name: senderData.name || 'Unknown',
+                role: senderData.role || 'unknown',
+              } : undefined,
               receipts: [],
             };
 
@@ -506,20 +511,20 @@ const Chat: FC<ChatProps> = ({ workOrderId, conversationId: initialConversationI
           setMessages((prev) =>
             prev.map((msg) => {
               if (msg.id === payload.new.message_id) {
-                const updatedReceipts = msg.receipts?.map((r) =>
+                const updatedReceipts: MessageReceipt[] = (msg.receipts || []).map((r) =>
                   r.user_id === payload.new.user_id
                     ? {
                         ...r,
                         delivered_at: payload.new.delivered_at,
                         read_at: payload.new.read_at,
-                        status: payload.new.read_at
+                        status: (payload.new.read_at
                           ? 'read'
                           : payload.new.delivered_at
                           ? 'delivered'
-                          : 'sent',
+                          : 'sent') as 'sent' | 'delivered' | 'read',
                       }
                     : r
-                ) || [];
+                );
 
                 return {
                   ...msg,

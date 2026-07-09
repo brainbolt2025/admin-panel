@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar, Upload, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
+import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import InviteNewTenants from './InviteNewTenants';

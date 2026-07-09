@@ -9,7 +9,7 @@ interface SubscriptionProps {
   initialPropertyName?: string;
 }
 
-const Subscription = ({ onSuccess, initialName = '', initialEmail = '', initialPropertyName = '' }: SubscriptionProps) => {
+const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName = '' }: SubscriptionProps) => {
   const [step, setStep] = useState<'pricing' | 'form' | 'success'>('pricing');
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [formData, setFormData] = useState({

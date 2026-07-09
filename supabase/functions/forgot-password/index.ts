@@ -181,6 +181,7 @@ serve(async (req) => {
 
     const linkData = await generateLinkResponse.json()
     const actionLink = linkData.action_link || linkData.properties?.action_link || linkData.properties?.actionLink
+    const hashedToken = linkData.hashed_token || linkData.properties?.hashed_token
 
     if (!actionLink) {
       console.error('No action_link found in generated link data. Full response:', JSON.stringify(linkData, null, 2))
@@ -194,7 +195,36 @@ serve(async (req) => {
       )
     }
 
-    console.log('Found action_link:', actionLink.substring(0, 100) + '...')
+    // Build the link that goes in the email.
+    //
+    // The raw Supabase action_link points at /auth/v1/verify, which is a
+    // one-time GET link. Email providers such as Gmail prefetch/scan links,
+    // which *consumes* that token before the user ever clicks — the user then
+    // lands on an "invalid or expired" screen.
+    //
+    // To avoid this, for the web app we instead link directly to our own
+    // /reset-password page and pass the token_hash as a query param. Scanners
+    // that fetch this URL only load our SPA (no token is spent); the token is
+    // only verified when the app explicitly calls verifyOtp(). Mobile deep-link
+    // flows keep using the original action_link.
+    //
+    // Web admin users (PM / technician / admin) ALWAYS get the token_hash web
+    // link — they reset in the browser, so a mobile deep-link scheme (which may
+    // be configured project-wide for the tenant app) must not push them onto
+    // the consumable action_link. Genuine mobile tenants keep the deep link.
+    const isWebAdminUser = userRole !== 'tenant'
+    let emailLink = actionLink
+    if (hashedToken && (isWebAdminUser || !APP_DEEP_LINK_SCHEME)) {
+      // PASSWORD_RESET_WEB_URL lets you override the base (e.g. http://localhost:5173
+      // for local testing) without touching the shared APP_URL used elsewhere.
+      const webBase = (
+        Deno.env.get('PASSWORD_RESET_WEB_URL') || APP_URL || 'https://admin.asine.app'
+      ).replace(/\/$/, '')
+      emailLink = `${webBase}/reset-password?token_hash=${hashedToken}&type=recovery`
+    }
+
+    console.log('Email link type:', emailLink === actionLink ? 'action_link' : 'token_hash')
+    console.log('Found email link:', emailLink.substring(0, 100) + '...')
 
     // Mailgun configuration
     const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || ''
@@ -231,7 +261,7 @@ serve(async (req) => {
           <p>Click the button below to reset your password:</p>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${actionLink}" 
+            <a href="${emailLink}" 
               style="background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
               Reset Password
             </a>
@@ -255,7 +285,7 @@ serve(async (req) => {
 We received a request to reset your password for your Asine account.
 
 Click the link below to reset your password:
-${actionLink}
+${emailLink}
 
 If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
 

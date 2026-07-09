@@ -22,10 +22,6 @@ const PropertyManagers = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleBulkInviteClick = () => {
-    setShowInvitePM(true);
-  };
-
   useEffect(() => {
     const fetchPropertyManagers = async () => {
       setLoading(true);
