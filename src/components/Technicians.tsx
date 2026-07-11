@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Wrench, Mail, Check, X as XIcon, Calendar, ChevronDown, Camera, Info, MapPin, Shield, Clock, Bell } from 'lucide-react';
+import { Search, Wrench, Mail, Check, X as XIcon, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, Users, Download, Building2, MailCheck, ThumbsUp } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
@@ -182,6 +182,8 @@ const Technicians = () => {
     
     return matchesSearch && matchesStatus;
   });
+
+  const pendingCount = technicians.filter((technician) => !technician.approved).length;
 
   // Handle profile picture upload
   const handleProfilePictureUpload = async (technicianId: string, file: File) => {
@@ -493,29 +495,24 @@ const Technicians = () => {
   return (
     <div className="p-6">
       <div className="bg-white rounded-xl shadow-sm">
-        {/* Topbar - Search and Alerts */}
+        {/* Topbar - Title and Alerts */}
         <div className="flex items-center justify-between px-6 py-4">
-          {/* Left side - Search */}
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search technicians..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
-              />
-            </div>
+          {/* Left side - Title */}
+          <div className="flex items-center gap-2">
+            <Users className="w-6 h-6 text-teal-600" />
+            <h1 className="text-2xl font-bold text-gray-900">Technicians</h1>
           </div>
 
           {/* Right side - Alerts (for PM only) */}
           {isPM && (
             <div className="flex items-center space-x-2">
               <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-4 h-4 text-gray-600" />
+                <Bell className="w-5 h-5 text-gray-600" />
+                {pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
+                    {pendingCount}
+                  </span>
+                )}
               </div>
               <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
             </div>
@@ -524,24 +521,36 @@ const Technicians = () => {
 
         {/* Content Section */}
         <div className="px-6 pb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Technicians</h1>
-
-          {/* Filters */}
-          <div className="mb-6 space-y-4">
-            <div className="flex gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="All">Status: All</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending">Pending</option>
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+          {/* Search */}
+          <div className="relative mb-4">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
+            <input
+              type="text"
+              placeholder="Search all technicians..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+            />
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="mb-6 flex items-center gap-2">
+            <span className="text-sm text-gray-500 mr-1">Status:</span>
+            {['All', 'Approved', 'Pending'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === status
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
           </div>
 
           {/* Technicians Table */}
@@ -556,11 +565,98 @@ const Technicians = () => {
             <p className="text-red-500">{errorTechnicians}</p>
           </div>
         ) : filteredTechnicians.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">
-              {technicians.length === 0 ? 'No technicians found' : 'No technicians match your filters'}
-            </p>
-          </div>
+          technicians.length === 0 ? (
+            <div className="relative overflow-hidden py-12 px-6">
+              {/* Decorative blobs */}
+              <div className="pointer-events-none absolute -top-8 -right-8 w-48 h-48 bg-teal-100/50 rounded-full blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-10 -left-10 w-56 h-56 bg-teal-100/40 rounded-full blur-2xl" />
+              {/* Decorative dotted grids */}
+              <div
+                className="pointer-events-none absolute top-6 right-10 w-24 h-16 opacity-40"
+                style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+              />
+              <div
+                className="pointer-events-none absolute bottom-6 left-8 w-28 h-16 opacity-40"
+                style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+              />
+
+              <div className="relative max-w-2xl mx-auto text-center">
+                {/* Illustration */}
+                <svg
+                  className="w-28 h-28 mx-auto mb-5"
+                  viewBox="0 0 120 120"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  role="img"
+                  aria-label="No technicians"
+                >
+                  <ellipse cx="58" cy="72" rx="46" ry="30" fill="#CCFBF1" />
+                  {/* Phone / notepad */}
+                  <rect x="60" y="34" width="34" height="52" rx="7" fill="#FFFFFF" stroke="#0F766E" strokeWidth="3" />
+                  <rect x="67" y="41" width="20" height="3.5" rx="1.75" fill="#5EEAD4" />
+                  <rect x="67" y="49" width="14" height="3.5" rx="1.75" fill="#5EEAD4" />
+                  {/* Check badge */}
+                  <circle cx="77" cy="70" r="12" fill="#0F766E" />
+                  <path d="M71.5 70.5l3.5 3.5 6-7" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  {/* Wrench */}
+                  <g stroke="#14B8A6" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="#14B8A6">
+                    <path
+                      d="M41 44a10 10 0 0 0-12.8 12.2L20 64.5a5 5 0 0 0 0 7l1.5 1.5a5 5 0 0 0 7 0l8.3-8.2A10 10 0 0 0 49 52l-6.2 6.2-5.6-5.6L43.4 46.4A10 10 0 0 0 41 44z"
+                      fill="#5EEAD4"
+                      stroke="#0F766E"
+                    />
+                  </g>
+                  {/* Sparkles */}
+                  <path d="M100 28l0 8M96 32l8 0" stroke="#0F766E" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">No technicians yet</h3>
+                <p className="text-gray-500 mb-8">
+                  Technicians add themselves to your property from the Asine mobile app.
+                </p>
+
+                {/* Two columns */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-2">Why you see this</h4>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Technicians manage their own accounts and sign up in the Asine mobile
+                      app. They won&apos;t appear here until they register for your property.
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-3">How to add a technician</h4>
+                    <ol className="space-y-3">
+                      <li className="flex items-center gap-3 text-sm text-gray-700">
+                        <span className="text-gray-400 font-medium">1.</span>
+                        <Download className="w-4 h-4 text-teal-600 shrink-0" />
+                        Download the app from the App Store
+                      </li>
+                      <li className="flex items-center gap-3 text-sm text-gray-700">
+                        <span className="text-gray-400 font-medium">2.</span>
+                        <Building2 className="w-4 h-4 text-teal-600 shrink-0" />
+                        Select your property during sign up
+                      </li>
+                      <li className="flex items-center gap-3 text-sm text-gray-700">
+                        <span className="text-gray-400 font-medium">3.</span>
+                        <MailCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                        Verify their email address
+                      </li>
+                      <li className="flex items-center gap-3 text-sm text-gray-700">
+                        <span className="text-gray-400 font-medium">4.</span>
+                        <ThumbsUp className="w-4 h-4 text-teal-600 shrink-0" />
+                        Approve them here once they appear
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No technicians match your filters</p>
+            </div>
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

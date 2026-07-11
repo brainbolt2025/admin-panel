@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, Bell } from 'lucide-react';
+import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, Bell, ClipboardList, Users, Building2, Mail } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 
 interface WorkOrder {
@@ -103,16 +103,25 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       title: 'Active PMs',
       value: adminStats.loading ? '—' : adminStats.activePMs.toString(),
       subtitle: 'Across all regions',
+      icon: Users,
+      iconBg: 'bg-teal-100',
+      iconColor: 'text-teal-600',
     },
     {
       title: 'Assigned Properties',
       value: adminStats.loading ? '—' : adminStats.assignedProperties.toString(),
       subtitle: 'Managed portfolio',
+      icon: Building2,
+      iconBg: 'bg-slate-100',
+      iconColor: 'text-slate-600',
     },
     {
       title: 'Pending Invites',
       value: '5',
       subtitle: 'Awaiting acceptance',
+      icon: Mail,
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
     },
   ];
   useEffect(() => {
@@ -172,16 +181,25 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       title: 'Pending',
       value: pmStats.loading ? '—' : pmStats.pending.toString(),
       subtitle: 'Awaiting assignment',
+      icon: ClipboardList,
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
     },
     {
       title: 'In Progress',
       value: pmStats.loading ? '—' : pmStats.inProgress.toString(),
       subtitle: 'Technician working',
+      icon: Wrench,
+      iconBg: 'bg-slate-100',
+      iconColor: 'text-slate-600',
     },
     {
       title: 'Completed',
       value: pmStats.loading ? '—' : pmStats.completed.toString(),
       subtitle: 'Last 30 days',
+      icon: CheckCircle,
+      iconBg: 'bg-green-100',
+      iconColor: 'text-green-600',
     },
   ];
 
@@ -463,46 +481,63 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     }
   };
 
+  const recentTenants = users.filter((user) => user.role === 'tenant');
+
   return (
     <div className="p-6">
-      <div className="bg-white rounded-xl shadow-sm">
-        {/* Topbar - Search and Alerts */}
-        <div className="flex items-center justify-between px-6 py-4">
-          {/* Left side - Search */}
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder={isPM ? "Search tenants, technicians…" : "Search PMs, properties…"}
-                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
-              />
-            </div>
-          </div>
+      <div className="relative overflow-hidden bg-white rounded-xl shadow-sm">
+        {/* Decorative blobs */}
+        <div className="pointer-events-none absolute -top-10 -right-10 w-52 h-52 bg-teal-100/40 rounded-full blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-12 -left-12 w-60 h-60 bg-teal-100/30 rounded-full blur-3xl" />
+        <div
+          className="pointer-events-none absolute top-8 right-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
+        <div
+          className="pointer-events-none absolute bottom-8 left-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
 
-          {/* Right side - Alerts (for PM only) */}
-          {isPM && (
-            <div className="flex items-center space-x-2">
-              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-4 h-4 text-gray-600" />
-              </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
+        {/* Search */}
+        <div className="relative px-6 pt-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
-          )}
+            <input
+              type="text"
+              placeholder={isPM ? "Search tenants, technicians, properties…" : "Search PMs, properties…"}
+              className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+            />
+          </div>
         </div>
 
         {/* Dashboard Content */}
-        <div className="px-6 pb-6">
-          {/* Welcome Message */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Welcome, {userName}!
-            </h1>
-            <p className="text-gray-600">
-              Here's an overview of your management dashboard
-            </p>
+        <div className="relative px-6 pb-6 pt-4">
+          {/* Welcome Message + Alerts */}
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                Welcome, {userName}!
+              </h1>
+              <p className="text-gray-600">
+                Here's an overview of your management dashboard
+              </p>
+            </div>
+
+            {isPM && (
+              <div className="flex items-center space-x-2 shrink-0">
+                <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                  <Bell className="w-5 h-5 text-gray-600" />
+                  {!pmStats.loading && pmStats.pending > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
+                      {pmStats.pending}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
+              </div>
+            )}
           </div>
 
       {/* Overview Section Header */}
@@ -511,7 +546,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         
         {/* Time Period Dropdown */}
         <div className="relative">
-          <select className="appearance-none bg-white border border-gray-300 rounded-md px-4 py-2 pr-8 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
+          <select className="appearance-none bg-white border border-teal-600 rounded-lg px-4 py-2 pr-8 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent">
             <option>Last 30 days</option>
             <option>Last 7 days</option>
             <option>Last 90 days</option>
@@ -524,30 +559,34 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-        {overviewCards.map((card, index) => (
-          <div
-            key={index}
-            className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
-          >
-            <h3 className="text-sm font-medium text-gray-500 mb-2">{card.title}</h3>
-            
-            <div className="mb-2">
-              <span className="text-3xl font-semibold text-gray-900">
-                {card.value}
-              </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {overviewCards.map((card, index) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={index}
+              className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow"
+            >
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${card.iconBg}`}>
+                <Icon className={`w-6 h-6 ${card.iconColor}`} />
+              </div>
+              <div className="flex items-end justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">{card.title}</h3>
+                  <p className="text-sm text-gray-400">{card.subtitle}</p>
+                </div>
+                <span className="text-3xl font-bold text-gray-900">{card.value}</span>
+              </div>
             </div>
-            
-            <p className="text-sm text-gray-400">{card.subtitle}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* PM Dashboard: Work Orders and Users */}
       {isPM ? (
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Work Orders Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Recent Work Orders</h3>
             </div>
@@ -564,7 +603,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
                 </div>
               ) : workOrders.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">No work orders found</p>
+                  <p className="text-gray-500">No work orders found for the selected period.</p>
                 </div>
               ) : (
                 <table className="w-full">
@@ -645,7 +684,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
           </div>
 
           {/* Tenants Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Recent Tenants</h3>
             </div>
@@ -660,9 +699,9 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
                 <div className="text-center py-8">
                   <p className="text-red-500">{errorUsers}</p>
                 </div>
-              ) : users.length === 0 ? (
+              ) : recentTenants.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">No users found</p>
+                  <p className="text-gray-500">No tenants found for the selected property.</p>
                 </div>
               ) : (
                 <table className="w-full">
@@ -674,7 +713,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => {
+                    {recentTenants.map((user) => {
                       const RoleIcon = getRoleIcon(user.role);
                       const initials = user.name
                         ?.split(' ')
@@ -725,7 +764,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       ) : (
         /* Super Admin: Recent Activity */
       <div className="mt-8">
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
           <div className="text-center py-12">
             <p className="text-gray-500">No recent activity to display</p>

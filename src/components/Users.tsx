@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
+import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import InviteNewTenants from './InviteNewTenants';
+import tenantsEmpty from '../assets/tenants-empty.png';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -646,6 +647,8 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     });
   };
 
+  const pendingCount = tenants.filter((tenant) => !tenant.approved).length;
+
   // Show invite form if state is set
   if (showInviteNewTenants) {
     return <InviteNewTenants onBack={() => setShowInviteNewTenants(false)} />;
@@ -653,30 +656,43 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
   return (
     <div className="p-6">
-      <div className="bg-white rounded-xl shadow-sm">
+      <div className="relative overflow-hidden bg-white rounded-xl shadow-sm">
+        {/* Decorative blobs */}
+        <div className="pointer-events-none absolute -top-10 -right-10 w-52 h-52 bg-teal-100/40 rounded-full blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-12 -left-12 w-60 h-60 bg-teal-100/30 rounded-full blur-3xl" />
+        <div
+          className="pointer-events-none absolute top-8 right-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
+        <div
+          className="pointer-events-none absolute bottom-8 left-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
+
         {/* Topbar - Search and Alerts */}
-        <div className="flex items-center justify-between px-6 py-4">
-          {/* Left side - Search */}
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search tenants..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
-              />
+        <div className="relative flex items-center justify-between gap-4 px-6 py-4">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
+            <input
+              type="text"
+              placeholder="Search all tenants, properties, or lease IDs..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+            />
           </div>
 
-          {/* Right side - Alerts (for PM only) */}
           {isPM && (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 shrink-0">
               <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-4 h-4 text-gray-600" />
+                <Bell className="w-5 h-5 text-gray-600" />
+                {pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
+                    {pendingCount}
+                  </span>
+                )}
               </div>
               <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
             </div>
@@ -684,9 +700,12 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         </div>
 
         {/* Content Section */}
-        <div className="px-6 pb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
+        <div className="relative px-6 pb-6">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2">
+              <UsersIcon className="w-6 h-6 text-teal-600" />
+              <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
+            </div>
             {isPM && (
               <button
                 onClick={() => setShowInviteNewTenants(true)}
@@ -698,21 +717,28 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
             )}
           </div>
 
-          {/* Filters */}
-          <div className="mb-6 space-y-4">
-            <div className="flex gap-4">
-              <div className="relative flex-1">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                >
-                  <option value="All">Status: All</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending">Pending</option>
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
+          {/* Status Filter */}
+          <div className="mb-6 flex items-center gap-2">
+            <span className="text-sm text-gray-500">Status:</span>
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={`appearance-none rounded-lg px-4 py-1.5 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                  statusFilter === 'All'
+                    ? 'bg-teal-600 text-white border border-teal-600'
+                    : 'bg-white border border-gray-300 text-gray-700'
+                }`}
+              >
+                <option value="All">All</option>
+                <option value="Approved">Approved</option>
+                <option value="Pending">Pending</option>
+              </select>
+              <ChevronDown
+                className={`absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${
+                  statusFilter === 'All' ? 'text-white' : 'text-gray-400'
+                }`}
+              />
             </div>
           </div>
 
@@ -728,11 +754,27 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
             <p className="text-red-500">{errorTenants}</p>
           </div>
         ) : filteredTenants.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">
-              {tenants.length === 0 ? 'No tenants found' : 'No tenants match your filters'}
-            </p>
-          </div>
+          tenants.length === 0 ? (
+            <div className="relative overflow-hidden py-12 px-6 text-center">
+              <div className="relative max-w-lg mx-auto">
+                <img
+                  src={tenantsEmpty}
+                  alt="No tenants"
+                  className="w-44 h-auto mx-auto mb-5"
+                />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  It looks like you don&apos;t have any tenants yet!
+                </h3>
+                <p className="text-gray-500">
+                  Start by inviting new tenants or checking your filters. If you believe this is an error, please contact support.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No tenants match your filters</p>
+            </div>
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

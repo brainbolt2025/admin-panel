@@ -738,32 +738,39 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     }
   };
 
+  const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
+
   return (
     <div className="p-6 w-full">
-      <div className="bg-white rounded-xl shadow-sm">
-        {/* Topbar - Search and Alerts */}
-        <div className="flex items-center justify-between px-6 py-4">
-          {/* Left side - Search */}
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search work orders..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
-              />
-            </div>
+      <div className="relative overflow-hidden bg-white rounded-xl shadow-sm">
+        {/* Decorative blobs */}
+        <div className="pointer-events-none absolute -top-10 -right-10 w-52 h-52 bg-teal-100/40 rounded-full blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-12 -left-12 w-60 h-60 bg-teal-100/30 rounded-full blur-3xl" />
+        <div
+          className="pointer-events-none absolute top-8 right-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
+        <div
+          className="pointer-events-none absolute bottom-8 left-10 w-28 h-16 opacity-40"
+          style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
+        />
+
+        {/* Topbar - Title and Alerts */}
+        <div className="relative flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="w-6 h-6 text-teal-600" />
+            <h1 className="text-2xl font-bold text-gray-900">Work Orders</h1>
           </div>
 
-          {/* Right side - Alerts (for PM only) */}
           {isPM && (
             <div className="flex items-center space-x-2">
               <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-4 h-4 text-gray-600" />
+                <Bell className="w-5 h-5 text-gray-600" />
+                {pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
+                    {pendingCount}
+                  </span>
+                )}
               </div>
               <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
             </div>
@@ -771,39 +778,59 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         </div>
 
         {/* Content Section */}
-        <div className="px-6 pb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Work Orders</h1>
+        <div className="relative px-6 pb-6">
+          {/* Search */}
+          <div className="relative mb-4">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search all work orders..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-2 bg-gray-50 border-0 rounded-full text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-colors"
+            />
+          </div>
 
           {/* Filters */}
-          <div className="mb-6 flex flex-col md:flex-row md:items-end gap-4">
-            <div className="flex gap-4">
-              <div className="relative w-48">
+          <div className="mb-6 flex flex-wrap items-center gap-4 px-4 py-3 border border-gray-200 rounded-xl bg-gray-50/50">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Status:</span>
+              <div className="relative">
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className={`appearance-none rounded-lg px-4 py-1.5 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                    statusFilter === 'All'
+                      ? 'bg-teal-600 text-white border border-teal-600'
+                      : 'bg-white border border-gray-300 text-gray-700'
+                  }`}
                 >
-                  <option value="All">Status: All</option>
+                  <option value="All">All</option>
                   <option value="Pending">Pending</option>
                   <option value="In Progress">In Progress</option>
                   <option value="Completed">Completed</option>
                   <option value="Canceled">Canceled</option>
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${statusFilter === 'All' ? 'text-white' : 'text-gray-400'}`} />
               </div>
+            </div>
 
-              <div className="relative w-48">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Priority:</span>
+              <div className="relative">
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="appearance-none w-full bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-1.5 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 >
-                  <option value="All">Priority: All</option>
+                  <option value="All">All</option>
                   <option value="High">High</option>
                   <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
             </div>
           </div>
@@ -820,17 +847,41 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
             <p className="text-red-500">{errorWorkOrders}</p>
           </div>
         ) : filteredWorkOrders.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="mb-4">
-              <ClipboardList className="w-16 h-16 text-gray-300 mx-auto" />
+          workOrders.length === 0 ? (
+            <div className="relative overflow-hidden py-12 px-6 text-center">
+              <div className="relative max-w-md mx-auto">
+                <svg
+                  className="w-28 h-28 mx-auto mb-5"
+                  viewBox="0 0 120 120"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  role="img"
+                  aria-label="No work orders"
+                >
+                  <ellipse cx="58" cy="72" rx="46" ry="30" fill="#CCFBF1" />
+                  {/* Clipboard */}
+                  <rect x="38" y="28" width="44" height="56" rx="6" fill="#FFFFFF" stroke="#0F766E" strokeWidth="3" />
+                  <rect x="50" y="22" width="20" height="10" rx="3" fill="#FFFFFF" stroke="#0F766E" strokeWidth="3" />
+                  <rect x="46" y="42" width="28" height="3" rx="1.5" fill="#5EEAD4" />
+                  <rect x="46" y="50" width="20" height="3" rx="1.5" fill="#5EEAD4" />
+                  <rect x="46" y="58" width="24" height="3" rx="1.5" fill="#5EEAD4" />
+                  {/* Wrench */}
+                  <g stroke="#0F766E" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="#5EEAD4">
+                    <path d="M72 58a8 8 0 0 0-10 9.8L56 74a4 4 0 0 0 0 5.7l1.2 1.2a4 4 0 0 0 5.7 0l6.2-6.2A8 8 0 0 0 78 66l-5 5-4.5-4.5L74 57a8 8 0 0 0-2-1z" />
+                  </g>
+                </svg>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Looks like you&apos;re caught up!</h3>
+                <p className="text-gray-500">
+                  You have no current work orders. Change filters to see older ones.
+                </p>
+              </div>
             </div>
-            <p className="text-gray-500 text-lg font-medium mb-1">
-              {workOrders.length === 0 ? 'No work orders found' : 'No work orders match your filters'}
-            </p>
-            {workOrders.length > 0 && (
-              <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
-            )}
-          </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No work orders match your filters</p>
+              <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters</p>
+            </div>
+          )
         ) : (
           <div className="overflow-x-auto w-full">
             <table className="w-full min-w-[1200px]">
