@@ -23,8 +23,20 @@ The function uses the same `STRIPE_SECRET_KEY` secret from your previous functio
 3. Go to **Project Settings** → **Edge Functions** → **Secrets**
 4. Click **Add Secret**
 5. Key: `STRIPE_SECRET_KEY`
-6. Value: `sk_test_xxx` (your Stripe test key)
+6. Value: `sk_test_xxx` (see .env.local for actual key)
 7. Click **Save**
+
+**Optional - Set SITE_URL for custom redirect URL:**
+1. Go to **Project Settings** → **Edge Functions** → **Secrets**
+2. Click **Add Secret**
+3. Key: `SITE_URL`
+4. Value: `https://your-domain.com` (or leave empty to use defaults)
+5. Click **Save**
+
+**Automatic redirect URL behavior:**
+- If `SITE_URL` is set, it will be used
+- Otherwise, in **test mode** (sk_test_...), defaults to `http://localhost:5173`
+- Otherwise, in **live mode** (sk_live_...), defaults to `https://admin.asine.app`
 
 ### 2. Create Price IDs in Stripe Dashboard
 
@@ -39,13 +51,17 @@ Before deploying, you need to create products and prices in Stripe:
 
 ### 3. Update Price IDs in the Function
 
-Replace the placeholder price IDs in the function with your actual Stripe price IDs:
+The function now uses the development price IDs. These are already configured in the code:
 
 ```typescript
 const priceId = plan === 'monthly' 
-  ? 'price_YOUR_MONTHLY_ID'     // Replace with your actual price ID
-  : 'price_YOUR_YEARLY_ID'      // Replace with your actual price ID
+  ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
+  : 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
 ```
+
+**Development Price IDs:**
+- Monthly: `price_1SMzASLC1RJAUbjMZVUqQCY0`
+- Yearly: `price_1SMzB3LC1RJAUbjMB57Ph1dI`
 
 ## Deployment
 

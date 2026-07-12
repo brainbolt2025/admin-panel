@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UserPlus, Mail, Calendar, CheckCircle, Clock, XCircle, ArrowLeft } from 'lucide-react';
+import { config } from '../config';
 
 interface Invitation {
   id: string;
@@ -16,9 +17,7 @@ interface InvitePMProps {
 
 const InvitePM = ({ onBack }: InvitePMProps) => {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    assignedProperties: [] as string[]
+    email: ''
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,34 +50,11 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
     }
   ];
 
-  const availableProperties = [
-    'Maple Residences',
-    'Riverside North',
-    'City Center',
-    'Harbor View',
-    'Lakeside Oaks',
-    'Sunset Towers',
-    'Garden Plaza',
-    'Downtown Complex',
-    'Riverside Apartments',
-    'Midtown Plaza',
-    'Park Lane'
-  ];
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
-    }));
-  };
-
-  const handlePropertyToggle = (property: string) => {
-    setFormData(prev => ({
-      ...prev,
-      assignedProperties: prev.assignedProperties.includes(property)
-        ? prev.assignedProperties.filter(p => p !== property)
-        : [...prev.assignedProperties, property]
     }));
   };
 
@@ -94,20 +70,23 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
         return;
       }
 
+      const requestBody = {
+        email: formData.email,
+        role: 'pm'
+      };
+      
+      console.log('Sending invite request:', requestBody);
+
       const response = await fetch(
-        'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/invite-pm',
+        `${config.supabase.url}/functions/v1/invite-pm`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+            'apikey': config.supabase.anonKey
           },
-          body: JSON.stringify({
-            email: formData.email,
-            name: formData.name,
-            role: 'pm'
-          })
+          body: JSON.stringify(requestBody)
         }
       );
 
@@ -119,9 +98,7 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
         
         // Reset form
         setFormData({
-          name: '',
-          email: '',
-          assignedProperties: []
+          email: ''
         });
       } else {
         console.error('Failed to invite user:', data);
@@ -194,25 +171,6 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name Field */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  placeholder="Enter full name"
-                />
-              </div>
-            </div>
-
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -233,42 +191,10 @@ const InvitePM = ({ onBack }: InvitePMProps) => {
               </div>
             </div>
 
-            {/* Assigned Properties */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Assigned Properties
-              </label>
-              <div className="border border-gray-300 rounded-lg p-4 max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {availableProperties.map((property) => (
-                    <label
-                      key={property}
-                      className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.assignedProperties.includes(property)}
-                        onChange={() => handlePropertyToggle(property)}
-                        className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                      />
-                      <span className="text-sm text-gray-700">{property}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {formData.assignedProperties.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-sm text-gray-600">
-                    Selected: {formData.assignedProperties.join(', ')}
-                  </p>
-                </div>
-              )}
-            </div>
-
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isSubmitting || !formData.name || !formData.email}
+              disabled={isSubmitting || !formData.email}
               className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               {isSubmitting ? (

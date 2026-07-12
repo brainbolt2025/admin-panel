@@ -1,22 +1,37 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, Check, CreditCard, ArrowRight } from 'lucide-react';
+import { config } from '../config';
 
 interface SubscriptionProps {
   onSuccess?: () => void;
+  initialName?: string;
+  initialEmail?: string;
+  initialPropertyName?: string;
 }
 
-const Subscription = ({ onSuccess }: SubscriptionProps) => {
+const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName = '' }: SubscriptionProps) => {
   const [step, setStep] = useState<'pricing' | 'form' | 'success'>('pricing');
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: initialName,
+    email: initialEmail,
+    confirmEmail: initialEmail,
     password: '',
-    propertyName: ''
+    propertyName: initialPropertyName
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      name: initialName || prev.name,
+      email: initialEmail || prev.email,
+      confirmEmail: initialEmail || prev.confirmEmail,
+      propertyName: initialPropertyName || prev.propertyName
+    }));
+  }, [initialName, initialEmail, initialPropertyName]);
 
   const plans = [
     {
@@ -77,22 +92,94 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
+
+    // Validate email confirmation
+    if (formData.email !== formData.confirmEmail) {
+      setErrorMessage('Email addresses do not match. Please check and try again.');
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
-      // Simulate Stripe checkout process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Here you would integrate with Stripe
-      // For now, we'll simulate success
-      setStep('success');
-      
-      if (onSuccess) {
-        setTimeout(() => {
-          onSuccess();
-        }, 3000);
+      // Step 1: Create user account and profile via Edge Function
+      const userResponse = await fetch(config.api.createUser, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          property_name: formData.propertyName
+        })
+      });
+
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        throw new Error(errorData.error || 'Failed to create user account');
       }
+
+      const userData = await userResponse.json();
+      const userId = userData.user_id;
+      console.log('User created successfully:', userId);
+
+      // Step 2: Create Stripe customer
+      const customerResponse = await fetch(config.api.createStripeCustomer, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          name: formData.name,
+          property_name: formData.propertyName
+        })
+      });
+
+      if (!customerResponse.ok) {
+        const errorData = await customerResponse.json();
+        throw new Error(errorData.error || 'Failed to create customer');
+      }
+
+      const customerData = await customerResponse.json();
+      const stripeCustomerId = customerData.customer_id;
+
+      // Step 3: Create subscription checkout session
+      const subscriptionResponse = await fetch(config.api.createSubscription, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.supabase.anonKey}`
+        },
+        body: JSON.stringify({
+          user_id: userId, // Use the actual user ID from account creation
+          email: formData.email,
+          stripe_customer_id: stripeCustomerId,
+          plan: selectedPlan as 'monthly' | 'yearly'
+        })
+      });
+
+      if (!subscriptionResponse.ok) {
+        const errorData = await subscriptionResponse.json();
+        throw new Error(errorData.error || 'Failed to create subscription');
+      }
+
+      const subscriptionData = await subscriptionResponse.json();
+      
+      // Redirect to Stripe Checkout
+      if (subscriptionData.success && subscriptionData.url) {
+        window.location.href = subscriptionData.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+
     } catch (error) {
-      setErrorMessage('Payment processing failed. Please try again.');
+      console.error('Subscription error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Payment processing failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -249,6 +336,35 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
             </div>
           </div>
 
+          {/* Confirm Email Field */}
+          <div>
+            <label htmlFor="confirmEmail" className="block text-sm font-medium text-gray-700 mb-2">
+              Confirm Email Address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="email"
+                id="confirmEmail"
+                name="confirmEmail"
+                value={formData.confirmEmail}
+                onChange={handleInputChange}
+                required
+                className={`w-full pl-12 pr-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-colors ${
+                  formData.confirmEmail && formData.email !== formData.confirmEmail
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-gray-300'
+                }`}
+                placeholder="Confirm your email address"
+              />
+            </div>
+            {formData.confirmEmail && formData.email !== formData.confirmEmail && (
+              <p className="mt-1 text-xs text-red-600">
+                Email addresses do not match
+              </p>
+            )}
+          </div>
+
           {/* Password Field */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
@@ -291,7 +407,7 @@ const Subscription = ({ onSuccess }: SubscriptionProps) => {
           {/* Subscribe Button */}
           <button
             type="submit"
-            disabled={isSubmitting || !formData.name || !formData.propertyName || !formData.email || !formData.password}
+            disabled={isSubmitting || !formData.name || !formData.propertyName || !formData.email || !formData.confirmEmail || !formData.password || formData.email !== formData.confirmEmail}
             className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {isSubmitting ? (

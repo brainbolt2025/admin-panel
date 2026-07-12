@@ -73,12 +73,27 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    // Define price IDs based on plan
-    // TODO: Replace these test price IDs with your production prices in Stripe Dashboard
-    // For production: Replace price_dev_... with price_live_...
+    // Detect if we're in test mode or live mode based on the secret key
+    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? ''
+    const isTestMode = stripeSecretKey.startsWith('sk_test_')
+    
+    console.log('Stripe key detected:', stripeSecretKey.substring(0, 10) + '...')
+    console.log('Key starts with sk_test_:', stripeSecretKey.startsWith('sk_test_'))
+    console.log('Mode detected:', isTestMode ? 'TEST' : 'LIVE')
+
+    // Define price IDs based on plan and environment
     const priceId = plan === 'monthly' 
-      ? 'price_1SMce8LC1RJAUbjMf3MZyCav'   
-      : 'price_1SMcgxLC1RJAUbjMCsGkOzCK'    // Replace with production price ID
+      ? (isTestMode 
+          ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
+          : 'price_1SMce8LC1RJAUbjMf3MZyCav')  // LIVE_MONTHLY_PRICE_ID
+      : (isTestMode 
+          ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
+          : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')  // LIVE_YEARLY_PRICE_ID
+
+    // Determine the site URL based on environment
+    // In test mode, use localhost for local development, otherwise use production
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
+    console.log('Using site URL:', siteUrl)
 
     // Create a Stripe Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
@@ -97,8 +112,8 @@ serve(async (req) => {
         email,  // Store email in metadata for reference
       },
       // Success and cancel URLs - user will be redirected here after payment
-      success_url: 'https://admin.asine.app/subscribe/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://admin.asine.app/subscribe/cancel',
+      success_url: `${siteUrl}?session_id={CHECKOUT_SESSION_ID}&payment=success`,
+      cancel_url: `${siteUrl}?payment=cancelled`,
       // Note: Don't use customer_email when customer is already specified
       // The customer object already has the email associated
       // Allow promotion codes
@@ -108,6 +123,10 @@ serve(async (req) => {
     })
 
     console.log('Stripe Checkout session created:', session.id)
+    console.log('Resolved SITE_URL:', Deno.env.get('SITE_URL'))
+    console.log('Checkout session URL:', session.url)
+    console.log('Checkout success_url:', session.success_url)
+    console.log('Checkout cancel_url:', session.cancel_url)
 
     // Return success response with checkout URL
     // The frontend should redirect the user to this URL
@@ -189,9 +208,10 @@ WORKFLOW:
 
 UPGRADING TO PRODUCTION:
 - Replace sk_test_... with sk_live_... in Supabase secrets
-- Replace price_dev_monthly_149 with your live monthly price ID
-- Replace price_dev_yearly_1429 with your live yearly price ID
+- Live monthly price ID: price_1SMce8LC1RJAUbjMf3MZyCav
+- Live yearly price ID: price_1SMcgxLC1RJAUbjMCsGkOzCK
 - Update success_url and cancel_url for production domain
+- The function will automatically detect test vs live mode based on your secret key
 
 TESTING:
 - Use test card: 4242 4242 4242 4242
