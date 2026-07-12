@@ -1,8 +1,12 @@
-import { useState, useEffect, useCallback, type FC } from 'react';
+import { useState, useEffect, type FC } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList, Bell } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
-import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchWorkOrdersQuery } from '../lib/pmQueries';
+import { invalidateWorkOrdersData } from '../lib/invalidatePmData';
+import { APPROVAL_STATUS } from '../lib/approvalStatus';
 
 interface WorkOrder {
   id: string;
@@ -32,7 +36,34 @@ interface WorkOrderMediaFile {
   createdAt?: string | null;
 }
 
+interface WorkOrderMediaRow {
+  work_order_id: string;
+  url: string | null;
+  media_type: string | null;
+  metadata: {
+    file_name?: string | null;
+    size_bytes?: number | null;
+  } | null;
+}
+
 const WORK_ORDER_MEDIA_BUCKET = 'work-order-media';
+
+const extractStoragePath = (url: string): string | null => {
+  const publicMarker = `/storage/v1/object/public/${WORK_ORDER_MEDIA_BUCKET}/`;
+  const signMarker = `/storage/v1/object/sign/${WORK_ORDER_MEDIA_BUCKET}/`;
+
+  if (url.includes(publicMarker)) {
+    return url.substring(url.indexOf(publicMarker) + publicMarker.length).split('?')[0] || null;
+  }
+  if (url.includes(signMarker)) {
+    return url.substring(url.indexOf(signMarker) + signMarker.length).split('?')[0] || null;
+  }
+  // Already a storage object path
+  if (!url.startsWith('http')) {
+    return url.replace(new RegExp(`^${WORK_ORDER_MEDIA_BUCKET}/`), '');
+  }
+  return null;
+};
 
 export interface WorkOrdersProps {
   selectedWorkOrderId?: string | null;
@@ -61,11 +92,21 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
+  const queryClient = useQueryClient();
 
-  // State for work orders
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [loadingWorkOrders, setLoadingWorkOrders] = useState(false);
-  const [errorWorkOrders, setErrorWorkOrders] = useState<string | null>(null);
+  const {
+    data: workOrders = [],
+    isLoading: loadingWorkOrders,
+    error: workOrdersQueryError,
+  } = useQuery({
+    queryKey: queryKeys.workOrders,
+    queryFn: fetchWorkOrdersQuery,
+    enabled: isPM,
+  });
+
+  const errorWorkOrders = workOrdersQueryError
+    ? (workOrdersQueryError as Error).message || 'Failed to load work orders'
+    : null;
 
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,114 +133,6 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
   const [workOrderToReopen, setWorkOrderToReopen] = useState<WorkOrder | null>(null);
   const [reopening, setReopening] = useState(false);
-
-  const { setPendingCount, setRefreshWorkOrdersList } = usePendingWorkOrders();
-  useEffect(() => {
-    const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
-    setPendingCount(pendingCount);
-  }, [workOrders, setPendingCount]);
-
-  // Helper function to transform work orders with tenant names
-  const transformWorkOrders = useCallback((ordersData: any[]): WorkOrder[] => {
-    return ordersData.map((order: any) => {
-      // Get tenant name from joined tenant user or from tenant_name column
-      let tenantName = 'N/A';
-      
-      if (order.tenant?.name) {
-        tenantName = order.tenant.name;
-      } else if (order.tenant_name) {
-        tenantName = order.tenant_name;
-      } else if (order.tenant_id) {
-        tenantName = 'N/A';
-      }
-      
-      // Get unit_number from work order
-      const unitNumber = order.unit_number || 'N/A';
-      
-      return {
-        id: order.id,
-        title: order.title || order.description || 'Untitled',
-        description: order.description,
-        priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-        status: order.status,
-        tenant_name: tenantName,
-        tenant_id: order.tenant_id,
-        property_id: order.property_id,
-        technician_id: order.technician_id,
-        unit_number: unitNumber || null,
-        created_at: order.created_at || null,
-      };
-    });
-  }, []);
-
-  // Fetch all work orders from database (not just 3)
-  const fetchWorkOrders = useCallback(async () => {
-    if (!isPM) return; // Only fetch for PM users
-
-    setLoadingWorkOrders(true);
-    setErrorWorkOrders(null);
-
-    try {
-      const supabaseClient = getAuthenticatedSupabase();
-      
-      console.log('Fetching all work orders...');
-      
-      // Fetch all work orders with tenant information (no limit for PM)
-      const { data: ordersData, error: ordersError } = await supabaseClient
-        .from('work_orders')
-        .select(`
-          id, 
-          title, 
-          description, 
-          priority, 
-          status, 
-          tenant_name, 
-          tenant_id, 
-          property_id, 
-          technician_id,
-          unit_number,
-          created_at,
-          tenant:users!tenant_id(name)
-        `)
-        .order('id', { ascending: false });
-
-      if (ordersError) {
-        console.error('Work orders query error:', ordersError);
-        throw ordersError;
-      }
-
-      console.log('Work orders fetched:', ordersData);
-
-      if (!ordersData || ordersData.length === 0) {
-        console.log('No work orders found in database');
-        setWorkOrders([]);
-        return;
-      }
-
-      // Transform the data - get tenant name from joined users table or fallback to tenant_name column
-      const transformedData = transformWorkOrders(ordersData);
-
-      setWorkOrders(transformedData);
-    } catch (err: any) {
-      console.error('Error fetching work orders:', err);
-      setErrorWorkOrders(err.message || 'Failed to load work orders');
-    } finally {
-      setLoadingWorkOrders(false);
-    }
-  }, [isPM, transformWorkOrders]);
-
-  // Register refresh function in context and fetch on mount
-  useEffect(() => {
-    if (isPM) {
-      setRefreshWorkOrdersList(fetchWorkOrders);
-      fetchWorkOrders();
-    }
-
-    // Cleanup: unregister on unmount
-    return () => {
-      setRefreshWorkOrdersList(null);
-    };
-  }, [isPM, fetchWorkOrders, setRefreshWorkOrdersList]);
 
   // Effect to handle selectedWorkOrderId from Dashboard or Topbar
   useEffect(() => {
@@ -282,58 +215,60 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     try {
       const supabaseClient = getAuthenticatedSupabase();
 
-      const { data: files, error: listError } = await supabaseClient.storage
-        .from(WORK_ORDER_MEDIA_BUCKET)
-        .list('', {
-          limit: 1000,
-          offset: 0,
-          sortBy: { column: 'created_at', order: 'desc' },
-        });
+      const { data: mediaRows, error: mediaQueryError } = await supabaseClient
+        .from('work_order_media')
+        .select('work_order_id, url, media_type, metadata')
+        .eq('work_order_id', workOrderId);
 
-      if (listError) {
-        throw listError;
+      if (mediaQueryError) {
+        throw mediaQueryError;
       }
 
-      const relevantFiles = (files || []).filter((file) =>
-        file.name.includes(`workorder_${workOrderId}`)
-      );
-
-      if (relevantFiles.length === 0) {
+      const rows = (mediaRows ?? []) as WorkOrderMediaRow[];
+      if (rows.length === 0) {
         setMediaFiles([]);
         return;
       }
 
       const filesWithUrls = await Promise.all(
-        relevantFiles.map(async (file) => {
-          const { data: signedData, error: signedError } = await supabaseClient.storage
-            .from(WORK_ORDER_MEDIA_BUCKET)
-            .createSignedUrl(file.name, 60 * 60);
-
-          if (signedError || !signedData?.signedUrl) {
-            throw signedError || new Error(`Failed to create signed URL for ${file.name}`);
+        rows.map(async (row) => {
+          const sourceUrl = row.url;
+          if (!sourceUrl) {
+            return null;
           }
 
-          let normalizedSize: number | null = null;
+          const fileName =
+            row.metadata?.file_name ||
+            sourceUrl.split('/').pop()?.split('?')[0] ||
+            'Attachment';
+          const size =
+            typeof row.metadata?.size_bytes === 'number' && Number.isFinite(row.metadata.size_bytes)
+              ? row.metadata.size_bytes
+              : null;
 
-          if (typeof file.metadata?.size === 'number' && Number.isFinite(file.metadata.size)) {
-            normalizedSize = file.metadata.size;
-          } else if (typeof file.metadata?.size === 'string') {
-            const parsed = Number(file.metadata.size);
-            normalizedSize = Number.isFinite(parsed) ? parsed : null;
-          } else if (typeof (file as any).size === 'number' && Number.isFinite((file as any).size)) {
-            normalizedSize = (file as any).size;
+          const storagePath = extractStoragePath(sourceUrl);
+          let displayUrl = sourceUrl;
+
+          if (storagePath) {
+            const { data: signedData, error: signedError } = await supabaseClient.storage
+              .from(WORK_ORDER_MEDIA_BUCKET)
+              .createSignedUrl(storagePath, 60 * 60);
+
+            if (!signedError && signedData?.signedUrl) {
+              displayUrl = signedData.signedUrl;
+            }
           }
 
           return {
-            name: file.name,
-            signedUrl: signedData.signedUrl,
-            size: normalizedSize,
-            createdAt: file.created_at ?? null,
+            name: fileName,
+            signedUrl: displayUrl,
+            size,
+            createdAt: null,
           } as WorkOrderMediaFile;
         })
       );
 
-      setMediaFiles(filesWithUrls);
+      setMediaFiles(filesWithUrls.filter((file): file is WorkOrderMediaFile => file !== null));
     } catch (err: any) {
       console.error('Error fetching work order media:', err);
       setMediaError(err.message || 'Failed to load work order media');
@@ -414,7 +349,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         .select('id, name, email')
         .eq('property_id', workOrder.property_id)
         .eq('role', 'technician')
-        .eq('approved', true);
+        .eq('approved', APPROVAL_STATUS.approved);
 
       if (error) throw error;
 
@@ -458,30 +393,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         throw error;
       }
 
-      // Refresh work orders list
-      const { data: ordersData, error: ordersError } = await supabaseClient
-        .from('work_orders')
-        .select(`
-          id, 
-          title, 
-          description, 
-          priority, 
-          status, 
-          tenant_name, 
-          tenant_id, 
-          property_id, 
-          technician_id,
-          unit_number,
-          created_at,
-          tenant:users!tenant_id(name)
-        `)
-        .order('id', { ascending: false });
-
-      if (ordersError) throw ordersError;
-
-      const transformedData = transformWorkOrders(ordersData);
-
-      setWorkOrders(transformedData);
+      invalidateWorkOrdersData(queryClient);
 
       // Send email notifications (fire and forget - don't block UI)
       const supabaseUrl = config.supabase.url;
@@ -618,30 +530,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         throw error;
       }
 
-      // Refresh work orders list
-      const { data: ordersData, error: ordersError } = await supabaseClient
-        .from('work_orders')
-        .select(`
-          id, 
-          title, 
-          description, 
-          priority, 
-          status, 
-          tenant_name, 
-          tenant_id, 
-          property_id, 
-          technician_id,
-          unit_number,
-          created_at,
-          tenant:users!tenant_id(name)
-        `)
-        .order('id', { ascending: false });
-
-      if (ordersError) throw ordersError;
-
-      const transformedData = transformWorkOrders(ordersData);
-
-      setWorkOrders(transformedData);
+      invalidateWorkOrdersData(queryClient);
 
       // Close modal and reset
       setReopenModalOpen(false);
@@ -708,30 +597,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
         }
       }
 
-      // Refresh work orders list
-      const { data: ordersData, error: ordersError } = await supabaseClient
-        .from('work_orders')
-        .select(`
-          id, 
-          title, 
-          description, 
-          priority, 
-          status, 
-          tenant_name, 
-          tenant_id, 
-          property_id, 
-          technician_id,
-          unit_number,
-          created_at,
-          tenant:users!tenant_id(name)
-        `)
-        .order('id', { ascending: false });
-
-      if (ordersError) throw ordersError;
-
-      const transformedData = transformWorkOrders(ordersData);
-
-      setWorkOrders(transformedData);
+      invalidateWorkOrdersData(queryClient);
     } catch (err: any) {
       console.error('Error completing work order:', err);
       alert('Failed to complete work order. Please try again.');

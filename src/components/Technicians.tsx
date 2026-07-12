@@ -1,8 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Wrench, Mail, Check, X as XIcon, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, Users, Download, Building2, MailCheck, ThumbsUp } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchTechniciansQuery } from '../lib/pmQueries';
+import { invalidateTechniciansData } from '../lib/invalidatePmData';
+import {
+  APPROVAL_STATUS,
+  isApproved,
+  isPending,
+  isRejected,
+  normalizeApprovalStatus,
+  type ApprovalStatus,
+} from '../lib/approvalStatus';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -11,7 +23,7 @@ interface Technician {
   name: string | null;
   email: string | null;
   role: string | null;
-  approved: boolean | null;
+  approved: ApprovalStatus;
   created_at?: string;
   profile_picture_url?: string | null;
   property_name?: string | null;
@@ -40,11 +52,29 @@ const Technicians = () => {
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
+  const queryClient = useQueryClient();
 
-  // State for technicians
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loadingTechnicians, setLoadingTechnicians] = useState(false);
-  const [errorTechnicians, setErrorTechnicians] = useState<string | null>(null);
+  const {
+    data: techniciansData,
+    isLoading: loadingTechnicians,
+    error: techniciansQueryError,
+  } = useQuery({
+    queryKey: queryKeys.technicians,
+    queryFn: fetchTechniciansQuery,
+    enabled: isPM,
+  });
+
+  const technicians = techniciansData?.technicians ?? [];
+  const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
+  const errorTechnicians = techniciansQueryError
+    ? (techniciansQueryError as Error).message || 'Failed to load technicians'
+    : null;
+
+  useEffect(() => {
+    if (techniciansData?.profilePictureUrls) {
+      setProfilePictureUrls(techniciansData.profilePictureUrls);
+    }
+  }, [techniciansData?.profilePictureUrls]);
 
   // State for search
   const [searchTerm, setSearchTerm] = useState('');
@@ -63,112 +93,8 @@ const Technicians = () => {
   // State for profile picture upload
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
 
-  const { setPendingTechniciansCount, refreshPendingTechniciansCount } = usePendingWorkOrders();
-
-  const fetchTechnicians = useCallback(async () => {
-    if (!isPM) {
-      setPendingTechniciansCount(0);
-      return;
-    }
-
-    setLoadingTechnicians(true);
-    setErrorTechnicians(null);
-
-    try {
-      const supabaseClient = getAuthenticatedSupabase();
-      
-      console.log('Fetching technicians for PM...');
-      
-      // Get PM's property_id
-      const { data: userData } = await supabaseClient.auth.getUser();
-      
-      if (!userData.user) {
-        throw new Error('User not found');
-      }
-
-      const { data: pmData, error: pmError } = await supabaseClient
-        .from('users')
-        .select('property_id, name, property_name')
-        .eq('id', userData.user.id)
-        .eq('role', 'pm')
-        .single();
-
-      if (pmError) throw pmError;
-      if (!pmData?.property_id) {
-        console.log('No property assigned to PM');
-        setTechnicians([]);
-        return;
-      }
-
-      // Fetch all technicians from the same property
-      const { data: techniciansData, error: techniciansError } = await supabaseClient
-        .from('users')
-        .select('id, name, email, role, approved, created_at, profile_picture_url, property_name, email_verified')
-        .eq('property_id', pmData.property_id)
-        .eq('role', 'technician')
-        .order('created_at', { ascending: false });
-
-      if (techniciansError) throw techniciansError;
-
-      console.log('Technicians fetched:', techniciansData);
-
-      if (!techniciansData || techniciansData.length === 0) {
-        console.log('No technicians found in database');
-        setTechnicians([]);
-        setPendingTechniciansCount(0);
-        return;
-      }
-
-      const transformedData: Technician[] = techniciansData.map((technician: any) => ({
-        id: technician.id,
-        name: technician.name,
-        email: technician.email,
-        role: technician.role,
-        approved: technician.approved,
-        created_at: technician.created_at,
-        profile_picture_url: technician.profile_picture_url,
-        property_name: technician.property_name,
-        email_verified: technician.email_verified,
-      }));
-
-      // Fetch profile picture URLs for technicians with profile pictures
-      const urlsMap: Record<string, string> = {};
-      await Promise.all(
-        transformedData
-          .filter((t) => t.profile_picture_url)
-          .map(async (technician) => {
-            try {
-              const { data: signedData, error: signedError } = await supabaseClient.storage
-                .from(PROFILE_PICTURES_BUCKET)
-                .createSignedUrl(technician.profile_picture_url!, 60 * 60 * 24); // 24 hours
-
-              if (!signedError && signedData?.signedUrl) {
-                urlsMap[technician.id] = signedData.signedUrl;
-              }
-            } catch (err) {
-              console.error(`Error fetching profile picture for technician ${technician.id}:`, err);
-            }
-          })
-      );
-      setProfilePictureUrls(urlsMap);
-      setTechnicians(transformedData);
-      const pendingCount = transformedData.filter((tech) => !tech.approved).length;
-      setPendingTechniciansCount(pendingCount);
-    } catch (err: any) {
-      console.error('Error fetching technicians:', err);
-      setErrorTechnicians(err.message || 'Failed to load technicians');
-    } finally {
-      setLoadingTechnicians(false);
-    }
-  }, [isPM, setPendingTechniciansCount]);
-
-  // Fetch technicians from database
-  useEffect(() => {
-    if (!isPM) return; // Only fetch for PM users
-    fetchTechnicians();
-  }, [isPM, fetchTechnicians]);
+  const { refreshPendingTechniciansCount } = usePendingWorkOrders();
 
   // Filter technicians based on search
   const filteredTechnicians = technicians.filter((technician) => {
@@ -177,13 +103,14 @@ const Technicians = () => {
       technician.email?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'All' || 
-      (statusFilter === 'Approved' && technician.approved) ||
-      (statusFilter === 'Pending' && !technician.approved);
+      (statusFilter === 'Approved' && isApproved(technician.approved)) ||
+      (statusFilter === 'Pending' && isPending(technician.approved)) ||
+      (statusFilter === 'Rejected' && isRejected(technician.approved));
     
     return matchesSearch && matchesStatus;
   });
 
-  const pendingCount = technicians.filter((technician) => !technician.approved).length;
+  const pendingCount = technicians.filter((technician) => isPending(technician.approved)).length;
 
   // Handle profile picture upload
   const handleProfilePictureUpload = async (technicianId: string, file: File) => {
@@ -241,8 +168,8 @@ const Technicians = () => {
         }));
       }
 
-      // Refresh technicians list
-      await fetchTechnicians();
+      invalidateTechniciansData(queryClient);
+      refreshPendingTechniciansCount();
     } catch (err: any) {
       console.error('Error uploading profile picture:', err);
       alert('Failed to upload profile picture. Please try again.');
@@ -285,7 +212,7 @@ const Technicians = () => {
         name: technicianData.name,
         email: technicianData.email,
         role: technicianData.role,
-        approved: technicianData.approved,
+        approved: normalizeApprovalStatus(technicianData.approved),
         created_at: technicianData.created_at,
         profile_picture_url: technicianData.profile_picture_url,
         property_name: technicianData.property_name,
@@ -364,7 +291,7 @@ const Technicians = () => {
 
       const { error } = await supabaseClient
         .from('users')
-        .update({ approved: true })
+        .update({ approved: APPROVAL_STATUS.approved })
         .eq('id', selectedTechnician.id);
 
       if (error) {
@@ -372,8 +299,8 @@ const Technicians = () => {
         throw error;
       }
 
-      await fetchTechnicians();
-      await refreshPendingTechniciansCount();
+      invalidateTechniciansData(queryClient);
+      refreshPendingTechniciansCount();
 
       // Send approval email
       if (!selectedTechnician.email) {
@@ -467,7 +394,7 @@ const Technicians = () => {
 
       const { error } = await supabaseClient
         .from('users')
-        .update({ approved: false })
+        .update({ approved: APPROVAL_STATUS.rejected })
         .eq('id', selectedTechnician.id);
 
       if (error) {
@@ -475,8 +402,8 @@ const Technicians = () => {
         throw error;
       }
 
-      await fetchTechnicians();
-      await refreshPendingTechniciansCount();
+      invalidateTechniciansData(queryClient);
+      refreshPendingTechniciansCount();
       setConfirmModalOpen(false);
       setSelectedTechnician(null);
       setConfirmAction(null);
@@ -538,7 +465,7 @@ const Technicians = () => {
           {/* Status Filter Tabs */}
           <div className="mb-6 flex items-center gap-2">
             <span className="text-sm text-gray-500 mr-1">Status:</span>
-            {['All', 'Approved', 'Pending'].map((status) => (
+            {['All', 'Approved', 'Pending', 'Rejected'].map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -718,10 +645,15 @@ const Technicians = () => {
                       </div>
                     </td>
                     <td className="py-4 px-6">
-                      {technician.approved ? (
+                      {isApproved(technician.approved) ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
                           <Check className="w-3 h-3" />
                           Approved
+                        </span>
+                      ) : isRejected(technician.approved) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
+                          <XIcon className="w-3 h-3" />
+                          Rejected
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-md text-xs font-medium">
@@ -742,7 +674,7 @@ const Technicians = () => {
                           <Info className="w-3 h-3" />
                           Details
                         </button>
-                        {!technician.approved ? (
+                        {isPending(technician.approved) ? (
                           <>
                             <button
                               onClick={() => handleApproveClick(technician)}
@@ -759,13 +691,21 @@ const Technicians = () => {
                               Reject
                             </button>
                           </>
-                        ) : (
+                        ) : isApproved(technician.approved) ? (
                           <button
                             onClick={() => handleRejectClick(technician)}
                             className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
                           >
                             <XIcon className="w-3 h-3" />
                             Revoke
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleApproveClick(technician)}
+                            className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
+                          >
+                            <Check className="w-3 h-3" />
+                            Approve
                           </button>
                         )}
                       </div>
@@ -916,10 +856,15 @@ const Technicians = () => {
                           <span className="capitalize">{technicianDetails.role || 'N/A'}</span>
                         </div>
                         <div className="flex items-center">
-                          {technicianDetails.approved ? (
+                          {isApproved(technicianDetails.approved) ? (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
                               <Check className="w-4 h-4" />
                               Approved
+                            </span>
+                          ) : isRejected(technicianDetails.approved) ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium">
+                              <XIcon className="w-4 h-4" />
+                              Rejected
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-md text-sm font-medium">
@@ -978,7 +923,7 @@ const Technicians = () => {
                   >
                     Close
                   </button>
-                  {!technicianDetails.approved && (
+                  {!isApproved(technicianDetails.approved) && (
                     <button
                       onClick={() => {
                         setDetailsModalOpen(false);
@@ -988,6 +933,18 @@ const Technicians = () => {
                     >
                       <Check className="w-4 h-4 inline mr-2" />
                       Approve Technician
+                    </button>
+                  )}
+                  {!isRejected(technicianDetails.approved) && (
+                    <button
+                      onClick={() => {
+                        setDetailsModalOpen(false);
+                        handleRejectClick(technicianDetails);
+                      }}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <XIcon className="w-4 h-4 inline mr-2" />
+                      {isApproved(technicianDetails.approved) ? 'Revoke' : 'Reject'} Technician
                     </button>
                   )}
                 </div>

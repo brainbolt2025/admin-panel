@@ -385,7 +385,7 @@ serve(async (req) => {
           email, // Ensure email is correct
           property_name, // Ensure property_name is set
           role: 'pm', // CRITICAL: Ensure role is 'pm' not 'tenant'
-          approved: false, // Will be approved after payment
+          approved: 'pending', // Will be approved after payment
           subscribed: false, // Will be updated after payment
           subscription_status: 'pending'
         })
@@ -435,7 +435,7 @@ serve(async (req) => {
           email,
           property_name,
           role: 'pm', // Property Manager role (matches constraint)
-          approved: false, // Will be approved after payment
+          approved: 'pending', // Will be approved after payment
           subscribed: false, // Will be updated after payment
           subscription_status: 'pending'
         })
@@ -503,7 +503,7 @@ serve(async (req) => {
         email,
         property_name,
         role: 'pm',
-        approved: false,
+        approved: 'pending',
         subscribed: false,
         subscription_status: 'pending'
       }, null, 2))

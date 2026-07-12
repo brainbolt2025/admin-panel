@@ -328,7 +328,7 @@ serve(async (req) => {
           property_id: finalPropertyId,
           property_name: finalPropertyName,
           unit_number: unit_number || null,
-          approved: false // Default to pending approval
+          approved: 'pending' // Default to pending approval
         })
         .eq('id', authUserId)
         .select('id, name, email, role, property_id, property_name, unit_number, approved')
@@ -358,7 +358,7 @@ serve(async (req) => {
               property_id: finalPropertyId,
               property_name: finalPropertyName,
               unit_number: unit_number || null,
-              approved: false
+              approved: 'pending'
             })
             .select('id, name, email, role, property_id, property_name, unit_number, approved')
             .single()

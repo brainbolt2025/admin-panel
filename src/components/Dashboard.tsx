@@ -1,23 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, Bell, ClipboardList, Users, Building2, Mail } from 'lucide-react';
-import { getAuthenticatedSupabase } from '../lib/supabase';
-
-interface WorkOrder {
-  id: string;
-  title: string | null;
-  description: string | null;
-  priority: 'Low' | 'Medium' | 'High' | null;
-  status: string | null;
-  property_name?: string;
-  tenant_name?: string;
-}
-
-interface User {
-  id: string;
-  name: string | null;
-  role: string | null;
-  approved?: boolean;
-}
+import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+import { queryKeys } from '../lib/queryKeys';
+import {
+  derivePmWorkOrderStats,
+  fetchAdminStatsQuery,
+  fetchCurrentUserName,
+  fetchTenantsQuery,
+  fetchWorkOrdersQuery,
+} from '../lib/pmQueries';
+import { isApproved } from '../lib/approvalStatus';
 
 interface DashboardProps {
   onNavigateToTenant?: (tenantName: string) => void;
@@ -25,30 +18,6 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps) => {
-  // Get user information for personalized welcome message
-  const getUserName = () => {
-    try {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        // Check user_metadata first (Supabase auth stores name here)
-        if (user.user_metadata?.name) {
-          return user.user_metadata.name;
-        }
-        // Fallback to raw_user_meta_data
-        if (user.raw_user_meta_data?.name) {
-          return user.raw_user_meta_data.name;
-        }
-        // Last fallback to email if name not available
-        return user.email?.split('@')[0] || 'Admin';
-      }
-    } catch (error) {
-      console.error('Error parsing user data:', error);
-    }
-    return 'Admin';
-  };
-
-  // Get user role from localStorage
   const getUserRole = () => {
     try {
       const userStr = localStorage.getItem('user');
@@ -67,41 +36,67 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     return 'super_admin';
   };
 
-  const getUserPropertyId = () => {
-    try {
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        return (
-          user.profile?.property_id ||
-          user.user_metadata?.property_id ||
-          user.raw_user_meta_data?.property_id ||
-          null
-        );
-      }
-    } catch (error) {
-      console.error('Error parsing user data for property_id:', error);
-    }
-    return null;
-  };
-
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
-  const [pmPropertyId, setPmPropertyId] = useState<string | null>(() => getUserPropertyId());
-  const [userName, setUserName] = useState<string>('Admin');
+  const { pendingCount } = usePendingWorkOrders();
 
-  const [adminStats, setAdminStats] = useState({
-    activePMs: 0,
-    assignedProperties: 0,
-    loading: true,
-    error: null as string | null,
+  const { data: userName = 'Admin' } = useQuery({
+    queryKey: queryKeys.currentUserName,
+    queryFn: fetchCurrentUserName,
   });
+
+  const {
+    data: adminStats,
+    isLoading: loadingAdminStats,
+  } = useQuery({
+    queryKey: queryKeys.adminStats,
+    queryFn: fetchAdminStatsQuery,
+    enabled: !isPM,
+  });
+
+  const {
+    data: allWorkOrders = [],
+    isLoading: loadingWorkOrders,
+    error: workOrdersQueryError,
+  } = useQuery({
+    queryKey: queryKeys.workOrders,
+    queryFn: fetchWorkOrdersQuery,
+    enabled: isPM,
+  });
+
+  const {
+    data: tenantsData,
+    isLoading: loadingTenants,
+    error: tenantsQueryError,
+  } = useQuery({
+    queryKey: queryKeys.tenants,
+    queryFn: fetchTenantsQuery,
+    enabled: isPM,
+  });
+
+  const workOrders = useMemo(() => allWorkOrders.slice(0, 3), [allWorkOrders]);
+  const pmStats = useMemo(() => derivePmWorkOrderStats(allWorkOrders), [allWorkOrders]);
+  const recentTenants = useMemo(
+    () => (tenantsData?.tenants ?? []).slice(0, 5),
+    [tenantsData?.tenants]
+  );
+
+  const errorWorkOrders = workOrdersQueryError
+    ? (workOrdersQueryError as Error).message?.includes('infinite recursion') ||
+      (workOrdersQueryError as Error).message?.includes('policy')
+      ? 'Permission error: Please check database policies. Contact administrator.'
+      : (workOrdersQueryError as Error).message || 'Failed to load work orders'
+    : null;
+
+  const errorTenants = tenantsQueryError
+    ? (tenantsQueryError as Error).message || 'Failed to load tenants'
+    : null;
 
   // Overview cards for Super Admin
   const adminOverviewCards = [
     {
       title: 'Active PMs',
-      value: adminStats.loading ? '—' : adminStats.activePMs.toString(),
+      value: loadingAdminStats ? '—' : (adminStats?.activePMs ?? 0).toString(),
       subtitle: 'Across all regions',
       icon: Users,
       iconBg: 'bg-teal-100',
@@ -109,7 +104,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     },
     {
       title: 'Assigned Properties',
-      value: adminStats.loading ? '—' : adminStats.assignedProperties.toString(),
+      value: loadingAdminStats ? '—' : (adminStats?.assignedProperties ?? 0).toString(),
       subtitle: 'Managed portfolio',
       icon: Building2,
       iconBg: 'bg-slate-100',
@@ -124,62 +119,11 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
       iconColor: 'text-amber-600',
     },
   ];
-  useEffect(() => {
-    if (isPM) return;
-
-    const fetchAdminStats = async () => {
-      setAdminStats((prev) => ({ ...prev, loading: true, error: null }));
-
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-
-        const [{ count: pmCount, error: pmError }, { count: propertyCount, error: propertyError }] =
-          await Promise.all([
-            supabaseClient
-              .from('users')
-              .select('id', { count: 'exact', head: true })
-              .eq('role', 'pm'),
-            supabaseClient
-              .from('properties')
-              .select('id', { count: 'exact', head: true }),
-          ]);
-
-        if (pmError) throw pmError;
-        if (propertyError) throw propertyError;
-
-        setAdminStats({
-          activePMs: pmCount ?? 0,
-          assignedProperties: propertyCount ?? 0,
-          loading: false,
-          error: null,
-        });
-      } catch (error: any) {
-        console.error('Error fetching admin overview stats:', error);
-        setAdminStats((prev) => ({
-          ...prev,
-          loading: false,
-          error: error?.message || 'Failed to fetch overview stats',
-        }));
-      }
-    };
-
-    fetchAdminStats();
-  }, [isPM, pmPropertyId]);
-
-
-  // Overview cards for PM (work orders stats)
-  const [pmStats, setPmStats] = useState({
-    pending: 0,
-    inProgress: 0,
-    completed: 0,
-    loading: true,
-    error: null as string | null,
-  });
 
   const pmOverviewCards = [
     {
       title: 'Pending',
-      value: pmStats.loading ? '—' : pmStats.pending.toString(),
+      value: loadingWorkOrders && allWorkOrders.length === 0 ? '—' : pmStats.pending.toString(),
       subtitle: 'Awaiting assignment',
       icon: ClipboardList,
       iconBg: 'bg-amber-100',
@@ -187,7 +131,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     },
     {
       title: 'In Progress',
-      value: pmStats.loading ? '—' : pmStats.inProgress.toString(),
+      value: loadingWorkOrders && allWorkOrders.length === 0 ? '—' : pmStats.inProgress.toString(),
       subtitle: 'Technician working',
       icon: Wrench,
       iconBg: 'bg-slate-100',
@@ -195,7 +139,7 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     },
     {
       title: 'Completed',
-      value: pmStats.loading ? '—' : pmStats.completed.toString(),
+      value: loadingWorkOrders && allWorkOrders.length === 0 ? '—' : pmStats.completed.toString(),
       subtitle: 'Last 30 days',
       icon: CheckCircle,
       iconBg: 'bg-green-100',
@@ -204,242 +148,6 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
   ];
 
   const overviewCards = isPM ? pmOverviewCards : adminOverviewCards;
-
-  // State for work orders
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [loadingWorkOrders, setLoadingWorkOrders] = useState(false);
-  const [errorWorkOrders, setErrorWorkOrders] = useState<string | null>(null);
-
-  // State for users (tenants and technicians)
-  const [users, setUsers] = useState<User[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [errorUsers, setErrorUsers] = useState<string | null>(null);
-
-  // Fetch user name from users table
-  useEffect(() => {
-    const fetchUserName = async () => {
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-        const { data: { user } } = await supabaseClient.auth.getUser();
-        
-        if (user) {
-          const { data: profile } = await supabaseClient
-            .from('users')
-            .select('name')
-            .eq('id', user.id)
-            .single();
-          
-          if (profile?.name) {
-            setUserName(profile.name);
-          } else {
-            // Fallback to email username if name not found
-            const emailUsername = user.email?.split('@')[0] || 'Admin';
-            setUserName(emailUsername);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user name:', error);
-        // Fallback to localStorage if database fetch fails
-        const fallbackName = getUserName();
-        setUserName(fallbackName);
-      }
-    };
-
-    fetchUserName();
-  }, []);
-
-  // Fetch work orders from database
-  useEffect(() => {
-    if (!isPM) return; // Only fetch for PM users
-
-    const fetchWorkOrders = async () => {
-      setLoadingWorkOrders(true);
-      setErrorWorkOrders(null);
-      setPmStats((prev) => ({ ...prev, loading: true, error: null }));
-
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-        
-        console.log('Fetching work orders...');
-        
-        // Fetch work orders first
-        let ordersQuery = supabaseClient
-          .from('work_orders')
-          .select('id, title, description, priority, status, tenant_name')
-          .order('id', { ascending: false })
-          .limit(3);
-
-        if (pmPropertyId) {
-          ordersQuery = ordersQuery.eq('property_id', pmPropertyId);
-        }
-
-        const { data: ordersData, error: ordersError } = await ordersQuery;
-
-        if (ordersError) {
-          console.error('Work orders query error:', ordersError);
-          throw ordersError;
-        }
-
-        console.log('Work orders fetched:', ordersData);
-
-        if (!ordersData || ordersData.length === 0) {
-          console.log('No work orders found in database');
-          setWorkOrders([]);
-          return;
-        }
-
-        // Transform the data (tenant_name is already in the work_orders table)
-        const transformedData: WorkOrder[] = ordersData.map((order: any) => ({
-          id: order.id,
-          title: order.title || order.description || 'Untitled',
-          description: order.description,
-          priority: order.priority as 'Low' | 'Medium' | 'High' | null,
-          status: order.status,
-          tenant_name: order.tenant_name || 'N/A',
-        }));
-
-        setWorkOrders(transformedData);
-
-        const buildCountQuery = (status: string) => {
-          let query = supabaseClient
-            .from('work_orders')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', status);
-
-          if (pmPropertyId) {
-            query = query.eq('property_id', pmPropertyId);
-          }
-
-          return query;
-        };
-
-        const [{ count: pendingCount, error: pendingError }, { count: inProgressCount, error: inProgressError }, { count: completedCount, error: completedError }] =
-          await Promise.all([
-            buildCountQuery('Pending'),
-            buildCountQuery('In Progress'),
-            buildCountQuery('Completed'),
-          ]);
-
-        if (pendingError || inProgressError || completedError) {
-          throw pendingError || inProgressError || completedError;
-        }
-
-        setPmStats({
-          pending: pendingCount ?? 0,
-          inProgress: inProgressCount ?? 0,
-          completed: completedCount ?? 0,
-          loading: false,
-          error: null,
-        });
-      } catch (err: any) {
-        console.error('Error fetching work orders:', err);
-        
-        // Handle RLS policy recursion error specifically
-        if (err.message?.includes('infinite recursion') || err.message?.includes('policy')) {
-          setErrorWorkOrders('Permission error: Please check database policies. Contact administrator.');
-        } else {
-          setErrorWorkOrders(err.message || 'Failed to load work orders');
-        }
-        setPmStats((prev) => ({
-          ...prev,
-          loading: false,
-          error: err.message || 'Failed to load overview stats',
-        }));
-      } finally {
-        setLoadingWorkOrders(false);
-      }
-    };
-
-    fetchWorkOrders();
-  }, [isPM]);
-
-  // Fetch users (tenants and technicians) from the same property as the PM
-  useEffect(() => {
-    if (!isPM) return; // Only fetch for PM users
-
-    const fetchUsers = async () => {
-      setLoadingUsers(true);
-      setErrorUsers(null);
-
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-        
-        console.log('Fetching PM property and users...');
-        
-        // First, get the PM user's property_id from the users table
-        const accessToken = localStorage.getItem('access_token');
-        let currentUserId: string | null = null;
-        
-        if (accessToken) {
-          // Decode JWT to get user ID
-          try {
-            const payload = JSON.parse(atob(accessToken.split('.')[1]));
-            currentUserId = payload.sub;
-          } catch (e) {
-            console.error('Error decoding token:', e);
-          }
-        }
-
-        if (!currentUserId) {
-          throw new Error('Could not determine current user ID');
-        }
-
-        // Get PM user's property_id
-        const { data: pmUser, error: pmError } = await supabaseClient
-          .from('users')
-          .select('property_id')
-          .eq('id', currentUserId)
-          .single();
-
-        if (pmError) throw pmError;
-        if (!pmUser?.property_id) {
-          console.log('PM user has no property assigned');
-          setPmPropertyId(null);
-          setUsers([]);
-          return;
-        }
-
-        setPmPropertyId(pmUser.property_id);
-
-        // Fetch the latest 5 users (tenants and technicians) from the same property
-        const { data: usersData, error: usersError } = await supabaseClient
-          .from('users')
-          .select('id, name, role, approved, property_id')
-          .eq('property_id', pmUser.property_id)
-          .in('role', ['tenant', 'technician'])
-          .order('id', { ascending: false })
-          .limit(5);
-
-        if (usersError) {
-          console.error('Users query error:', usersError);
-          throw usersError;
-        }
-
-        if (!usersData || usersData.length === 0) {
-          console.log('No users found for this property');
-          setUsers([]);
-          return;
-        }
-
-        // Transform the data
-        const transformedData: User[] = usersData.map((user: any) => ({
-          id: user.id,
-          name: user.name || 'Unknown',
-          role: user.role,
-          approved: user.approved || false,
-        }));
-
-        setUsers(transformedData);
-      } catch (err: any) {
-        console.error('Error fetching users:', err);
-        setErrorUsers(err.message || 'Failed to load users');
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
-
-    fetchUsers();
-  }, [isPM]);
 
   // Helper function to get priority icon
   const getPriorityIcon = (priority: string | null) => {
@@ -480,8 +188,6 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
         return User;
     }
   };
-
-  const recentTenants = users.filter((user) => user.role === 'tenant');
 
   return (
     <div className="p-6">
@@ -529,9 +235,9 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
               <div className="flex items-center space-x-2 shrink-0">
                 <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
                   <Bell className="w-5 h-5 text-gray-600" />
-                  {!pmStats.loading && pmStats.pending > 0 && (
+                  {!loadingWorkOrders && pendingCount > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
-                      {pmStats.pending}
+                      {pendingCount}
                     </span>
                   )}
                 </div>
@@ -691,13 +397,13 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
 
             {/* Tenants Table */}
             <div className="overflow-x-auto">
-              {loadingUsers ? (
+              {loadingTenants ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500">Loading tenants...</p>
                 </div>
-              ) : errorUsers ? (
+              ) : errorTenants ? (
                 <div className="text-center py-8">
-                  <p className="text-red-500">{errorUsers}</p>
+                  <p className="text-red-500">{errorTenants}</p>
                 </div>
               ) : recentTenants.length === 0 ? (
                 <div className="text-center py-8">
@@ -747,9 +453,9 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
                           </td>
                           <td className="py-3 px-2">
                             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium ${
-                              user.approved ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              isApproved(user.approved) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                             }`}>
-                              {user.approved ? '✓ Approved' : '✗ Not Approved'}
+                              {isApproved(user.approved) ? '✓ Approved' : '✗ Not Approved'}
                             </span>
                           </td>
                         </tr>

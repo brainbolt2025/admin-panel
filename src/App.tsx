@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -18,13 +19,25 @@ import Waitlist from './components/Waitlist'
 import ResetPassword from './components/ResetPassword'
 import { getAuthenticatedSupabase, supabase, isPasswordRecoveryLanding } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
+import { queryKeys } from './lib/queryKeys'
+import {
+  fetchPendingWorkOrdersCount,
+  fetchPendingTechniciansCount,
+  fetchPendingTenantsCount,
+} from './lib/pmQueries'
+import {
+  invalidateTechniciansData,
+  invalidateTenantsData,
+  invalidateWorkOrdersData,
+} from './lib/invalidatePmData'
+import { normalizeApprovalStatus, type ApprovalStatus } from './lib/approvalStatus'
 
 interface UserProfile {
   id: string
   email: string | null
   name: string | null
   role: string | null
-  approved: boolean | null
+  approved: ApprovalStatus
   property_id?: string | null
   property_name?: string | null
   email_verified?: boolean | null
@@ -96,10 +109,39 @@ function App() {
   const [selectedTenantFilter, setSelectedTenantFilter] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [cancelAt, setCancelAt] = useState<string | null>(null)
-  const [pendingWorkOrdersCount, setPendingWorkOrdersCount] = useState(0)
-  const [pendingTechniciansCount, setPendingTechniciansCount] = useState(0)
-  const [pendingTenantsCount, setPendingTenantsCount] = useState(0)
-  const [refreshWorkOrdersList, setRefreshWorkOrdersList] = useState<(() => Promise<void>) | null>(null)
+  const queryClient = useQueryClient()
+  const isPmUser = userProfile?.role === 'pm'
+  const propertyId = userProfile?.property_id ?? null
+
+  const { data: pendingWorkOrdersCount = 0 } = useQuery({
+    queryKey: queryKeys.pendingWorkOrders(propertyId),
+    queryFn: () => fetchPendingWorkOrdersCount(propertyId),
+    enabled: isPmUser && !!propertyId,
+  })
+
+  const { data: pendingTechniciansCount = 0 } = useQuery({
+    queryKey: queryKeys.pendingTechnicians(propertyId),
+    queryFn: () => fetchPendingTechniciansCount(propertyId),
+    enabled: isPmUser && !!propertyId,
+  })
+
+  const { data: pendingTenantsCount = 0 } = useQuery({
+    queryKey: queryKeys.pendingTenants(propertyId),
+    queryFn: () => fetchPendingTenantsCount(propertyId),
+    enabled: isPmUser && !!propertyId,
+  })
+
+  const refreshPendingCount = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingWorkOrders(propertyId) })
+  }, [queryClient, propertyId])
+
+  const refreshPendingTechniciansCount = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingTechnicians(propertyId) })
+  }, [queryClient, propertyId])
+
+  const refreshPendingTenantsCount = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.pendingTenants(propertyId) })
+  }, [queryClient, propertyId])
 
 
   const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
@@ -112,7 +154,7 @@ function App() {
       const userData = JSON.parse(userStr)
       const mergedUser = {
         ...userData,
-        approved: profile.approved,
+        approved: normalizeApprovalStatus(profile.approved),
         profile,
       }
 
@@ -140,9 +182,13 @@ function App() {
       }
 
       if (profile) {
-        setUserProfile(profile)
+        const normalizedProfile: UserProfile = {
+          ...profile,
+          approved: normalizeApprovalStatus(profile.approved),
+        }
+        setUserProfile(normalizedProfile)
         setCancelAt(profile.cancel_at || null)
-        syncLocalStorageUser(profile)
+        syncLocalStorageUser(normalizedProfile)
         
         // Check if subscription is cancelled or expired - show renewal page if:
         // 1. Subscription status is 'canceled' and subscribed is false (no active subscription)
@@ -187,96 +233,8 @@ function App() {
     localStorage.removeItem('user')
     setUserProfile(null)
     setCancelAt(null)
-  }, [])
-
-  const fetchPendingWorkOrdersCount = useCallback(async () => {
-    if (!userProfile || userProfile.role !== 'pm') {
-      setPendingWorkOrdersCount(0)
-      return
-    }
-
-    try {
-      const supabaseClient = getAuthenticatedSupabase()
-      let query = supabaseClient
-        .from('work_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'Pending')
-
-      if (userProfile.property_id) {
-        query = query.eq('property_id', userProfile.property_id)
-      }
-
-      const { count, error } = await query
-
-      if (error) {
-        throw error
-      }
-
-      setPendingWorkOrdersCount(count ?? 0)
-    } catch (error) {
-      console.error('Failed to fetch pending work orders count:', error)
-    }
-  }, [userProfile])
-
-  const fetchPendingTechniciansCount = useCallback(async () => {
-    if (!userProfile || userProfile.role !== 'pm') {
-      setPendingTechniciansCount(0)
-      return
-    }
-
-    try {
-      const supabaseClient = getAuthenticatedSupabase()
-      let query = supabaseClient
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'technician')
-        .eq('approved', false)
-
-      if (userProfile.property_id) {
-        query = query.eq('property_id', userProfile.property_id)
-      }
-
-      const { count, error } = await query
-
-      if (error) {
-        throw error
-      }
-
-      setPendingTechniciansCount(count ?? 0)
-    } catch (error) {
-      console.error('Failed to fetch pending technicians count:', error)
-    }
-  }, [userProfile])
-
-  const fetchPendingTenantsCount = useCallback(async () => {
-    if (!userProfile || userProfile.role !== 'pm') {
-      setPendingTenantsCount(0)
-      return
-    }
-
-    try {
-      const supabaseClient = getAuthenticatedSupabase()
-      let query = supabaseClient
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'tenant')
-        .eq('approved', false)
-
-      if (userProfile.property_id) {
-        query = query.eq('property_id', userProfile.property_id)
-      }
-
-      const { count, error } = await query
-
-      if (error) {
-        throw error
-      }
-
-      setPendingTenantsCount(count ?? 0)
-    } catch (error) {
-      console.error('Failed to fetch pending tenants count:', error)
-    }
-  }, [userProfile])
+    queryClient.clear()
+  }, [queryClient])
 
   // Keep tokens in sync with Supabase session changes and refresh automatically
   useEffect(() => {
@@ -423,13 +381,7 @@ function App() {
     initializeAuth()
   }, [loadUserProfile, clearStoredSession])
 
-  useEffect(() => {
-    fetchPendingWorkOrdersCount()
-    fetchPendingTechniciansCount()
-    fetchPendingTenantsCount()
-  }, [fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount])
-
-  // Set up polling for pending counts (updates every 30 seconds)
+  // Set up real-time subscriptions for PM data
   useEffect(() => {
     if (!userProfile || userProfile.role !== 'pm' || !userProfile.property_id) {
       return
@@ -463,14 +415,8 @@ function App() {
           filter: `property_id=eq.${userProfile.property_id}`,
         },
         (payload) => {
-          console.log('Work order changed, refreshing count:', payload.eventType)
-          fetchPendingWorkOrdersCount()
-          // Also refresh the work orders list if available
-          if (refreshWorkOrdersList) {
-            refreshWorkOrdersList().catch((error) => {
-              console.error('Error refreshing work orders list:', error)
-            })
-          }
+          console.log('Work order changed, refreshing cache:', payload.eventType)
+          invalidateWorkOrdersData(queryClient)
         }
       )
       .subscribe((status) => {
@@ -505,13 +451,13 @@ function App() {
             (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
 
           if (isTechnicianChange) {
-            console.log('Technician changed, refreshing count:', payload.eventType)
-            fetchPendingTechniciansCount()
+            console.log('Technician changed, refreshing cache:', payload.eventType)
+            invalidateTechniciansData(queryClient)
           }
 
           if (isTenantChange) {
-            console.log('Tenant changed, refreshing count:', payload.eventType)
-            fetchPendingTenantsCount()
+            console.log('Tenant changed, refreshing cache:', payload.eventType)
+            invalidateTenantsData(queryClient)
           }
         }
       )
@@ -588,7 +534,7 @@ function App() {
       supabaseClient.removeChannel(techniciansChannel)
       supabaseClient.removeChannel(userUpdatesChannel)
     }
-  }, [userProfile, fetchPendingWorkOrdersCount, fetchPendingTechniciansCount, fetchPendingTenantsCount, refreshWorkOrdersList])
+  }, [userProfile, queryClient])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -631,58 +577,22 @@ function App() {
     }
   }
 
-const handlePendingCountChange = useCallback(
-  (count: number) => {
-    if (userProfile?.role === 'pm') {
-      setPendingWorkOrdersCount(count)
-    }
-  },
-  [userProfile],
-)
-
-const handlePendingTechniciansCountChange = useCallback(
-  (count: number) => {
-    if (userProfile?.role === 'pm') {
-      setPendingTechniciansCount(count)
-    }
-  },
-  [userProfile],
-)
-
-const handlePendingTenantsCountChange = useCallback(
-  (count: number) => {
-    if (userProfile?.role === 'pm') {
-      setPendingTenantsCount(count)
-    }
-  },
-  [userProfile],
-)
-
 const pendingWorkOrdersContextValue = useMemo(
   () => ({
     pendingCount: pendingWorkOrdersCount,
     pendingTechniciansCount,
     pendingTenantsCount,
-    setPendingCount: handlePendingCountChange,
-    setPendingTechniciansCount: handlePendingTechniciansCountChange,
-    setPendingTenantsCount: handlePendingTenantsCountChange,
-    refreshPendingCount: fetchPendingWorkOrdersCount,
-    refreshPendingTechniciansCount: fetchPendingTechniciansCount,
-    refreshPendingTenantsCount: fetchPendingTenantsCount,
-    refreshWorkOrdersList,
-    setRefreshWorkOrdersList,
+    refreshPendingCount,
+    refreshPendingTechniciansCount,
+    refreshPendingTenantsCount,
   }),
   [
     pendingWorkOrdersCount,
     pendingTechniciansCount,
     pendingTenantsCount,
-    handlePendingCountChange,
-    handlePendingTechniciansCountChange,
-    handlePendingTenantsCountChange,
-    fetchPendingWorkOrdersCount,
-    fetchPendingTechniciansCount,
-    fetchPendingTenantsCount,
-    refreshWorkOrdersList,
+    refreshPendingCount,
+    refreshPendingTechniciansCount,
+    refreshPendingTenantsCount,
   ],
 )
 

@@ -314,7 +314,7 @@ serve(async (req) => {
           role: 'technician',
           property_id: finalPropertyId,
           property_name: finalPropertyName,
-          approved: false,
+          approved: 'pending',
         })
         .eq('id', authUserId)
         .select('id, name, email, role, property_id, property_name, approved')
@@ -341,7 +341,7 @@ serve(async (req) => {
               role: 'technician',
               property_id: finalPropertyId,
               property_name: finalPropertyName,
-              approved: false,
+              approved: 'pending',
             })
             .select('id, name, email, role, property_id, property_name, approved')
             .single()
@@ -584,7 +584,7 @@ If you didn't create an account, please ignore this email.`
         name,
         property_id: finalPropertyId,
         property_name: finalPropertyName,
-        approved: false,
+        approved: 'pending',
         email_sent: emailSent,
         email_error: emailError || undefined,
         message: emailSent 

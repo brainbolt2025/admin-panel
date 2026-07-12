@@ -1,9 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import InviteNewTenants from './InviteNewTenants';
 import tenantsEmpty from '../assets/tenants-empty.png';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchTenantsQuery } from '../lib/pmQueries';
+import { invalidateTenantsData } from '../lib/invalidatePmData';
+import {
+  APPROVAL_STATUS,
+  isApproved,
+  isPending,
+  isRejected,
+  normalizeApprovalStatus,
+  type ApprovalStatus,
+} from '../lib/approvalStatus';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -12,7 +24,7 @@ interface Tenant {
   name: string | null;
   email: string | null;
   role: string | null;
-  approved: boolean | null;
+  approved: ApprovalStatus;
   created_at?: string;
   profile_picture_url?: string | null;
   unit_number?: string | null;
@@ -50,11 +62,29 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
+  const queryClient = useQueryClient();
 
-  // State for tenants
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loadingTenants, setLoadingTenants] = useState(false);
-  const [errorTenants, setErrorTenants] = useState<string | null>(null);
+  const {
+    data: tenantsData,
+    isLoading: loadingTenants,
+    error: tenantsQueryError,
+  } = useQuery({
+    queryKey: queryKeys.tenants,
+    queryFn: fetchTenantsQuery,
+    enabled: isPM,
+  });
+
+  const tenants = tenantsData?.tenants ?? [];
+  const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
+  const errorTenants = tenantsQueryError
+    ? (tenantsQueryError as Error).message || 'Failed to load tenants'
+    : null;
+
+  useEffect(() => {
+    if (tenantsData?.profilePictureUrls) {
+      setProfilePictureUrls(tenantsData.profilePictureUrls);
+    }
+  }, [tenantsData?.profilePictureUrls]);
 
   // State for search and filters
   const [searchTerm, setSearchTerm] = useState(selectedTenantFilter || '');
@@ -73,7 +103,6 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
   // State for profile picture upload
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
 
   // State for invite new tenants form
   const [showInviteNewTenants, setShowInviteNewTenants] = useState(false);
@@ -92,104 +121,6 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     }
   }, [selectedTenantFilter, onClearTenantFilter]);
 
-  // Fetch tenants from database
-  useEffect(() => {
-    if (!isPM) return; // Only fetch for PM users
-
-    const fetchTenants = async () => {
-      setLoadingTenants(true);
-      setErrorTenants(null);
-
-      try {
-        const supabaseClient = getAuthenticatedSupabase();
-        
-        console.log('Fetching tenants for PM...');
-        
-        // Get PM's property_id
-        const { data: userData } = await supabaseClient.auth.getUser();
-        
-        if (!userData.user) {
-          throw new Error('User not found');
-        }
-
-        const { data: pmData, error: pmError } = await supabaseClient
-          .from('users')
-          .select('property_id, property_name')
-          .eq('id', userData.user.id)
-          .eq('role', 'pm')
-          .single();
-
-        if (pmError) throw pmError;
-        if (!pmData.property_id) {
-          console.log('No property assigned to PM');
-          setTenants([]);
-          return;
-        }
-
-        // Fetch all tenants from the same property
-        const { data: tenantsData, error: tenantsError } = await supabaseClient
-          .from('users')
-          .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, property_name, email_verified')
-          .eq('property_id', pmData.property_id)
-          .eq('role', 'tenant')
-          .order('created_at', { ascending: false });
-
-        if (tenantsError) throw tenantsError;
-
-        console.log('Tenants fetched:', tenantsData);
-
-        if (!tenantsData || tenantsData.length === 0) {
-          console.log('No tenants found in database');
-          setTenants([]);
-          return;
-        }
-
-        const transformedData: Tenant[] = tenantsData.map((tenant: any) => ({
-          id: tenant.id,
-          name: tenant.name,
-          email: tenant.email,
-          role: tenant.role,
-          approved: tenant.approved,
-          created_at: tenant.created_at,
-          profile_picture_url: tenant.profile_picture_url,
-          unit_number: tenant.unit_number,
-          property_name: tenant.property_name,
-          email_verified: tenant.email_verified,
-        }));
-
-        // Fetch profile picture URLs for tenants with profile pictures
-        const urlsMap: Record<string, string> = {};
-        await Promise.all(
-          transformedData
-            .filter((t) => t.profile_picture_url)
-            .map(async (tenant) => {
-              try {
-                const { data: signedData, error: signedError } = await supabaseClient.storage
-                  .from(PROFILE_PICTURES_BUCKET)
-                  .createSignedUrl(tenant.profile_picture_url!, 60 * 60 * 24); // 24 hours
-
-                if (!signedError && signedData?.signedUrl) {
-                  urlsMap[tenant.id] = signedData.signedUrl;
-                }
-              } catch (err) {
-                console.error(`Error fetching profile picture for tenant ${tenant.id}:`, err);
-              }
-            })
-        );
-        setProfilePictureUrls(urlsMap);
-
-        setTenants(transformedData);
-      } catch (err: any) {
-        console.error('Error fetching tenants:', err);
-        setErrorTenants(err.message || 'Failed to load tenants');
-      } finally {
-        setLoadingTenants(false);
-      }
-    };
-
-    fetchTenants();
-  }, [isPM]);
-
   // Filter tenants based on search and filters
   const filteredTenants = tenants
     .filter((tenant) => {
@@ -198,8 +129,9 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         tenant.email?.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === 'All' || 
-        (statusFilter === 'Approved' && tenant.approved) ||
-        (statusFilter === 'Pending' && !tenant.approved);
+        (statusFilter === 'Approved' && isApproved(tenant.approved)) ||
+        (statusFilter === 'Pending' && isPending(tenant.approved)) ||
+        (statusFilter === 'Rejected' && isRejected(tenant.approved));
 
       return matchesSearch && matchesStatus;
     })
@@ -253,7 +185,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
       // Update tenant to approved
       const { error } = await supabaseClient
         .from('users')
-        .update({ approved: true })
+        .update({ approved: APPROVAL_STATUS.approved })
         .eq('id', selectedTenant.id);
 
       if (error) {
@@ -261,9 +193,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         throw error;
       }
 
-      // Refresh tenants list
       const { data: userData } = await supabaseClient.auth.getUser();
-      
       if (!userData.user) {
         throw new Error('User not found');
       }
@@ -276,50 +206,8 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         .single();
 
       if (pmError) throw pmError;
-      
-      const { data: tenantsData, error: tenantsError } = await supabaseClient
-        .from('users')
-        .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, property_name, email_verified')
-        .eq('property_id', pmData.property_id)
-        .eq('role', 'tenant')
-        .order('created_at', { ascending: false });
 
-      if (tenantsError) throw tenantsError;
-
-      const transformedData: Tenant[] = tenantsData.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        email: t.email,
-        role: t.role,
-        approved: t.approved,
-        created_at: t.created_at,
-        profile_picture_url: t.profile_picture_url,
-        unit_number: t.unit_number,
-        property_name: t.property_name,
-        email_verified: t.email_verified,
-      }));
-
-      // Fetch profile picture URLs
-      const urlsMap: Record<string, string> = {};
-      await Promise.all(
-        transformedData
-          .filter((t) => t.profile_picture_url)
-          .map(async (tenant) => {
-            try {
-              const { data: signedData, error: signedError } = await supabaseClient.storage
-                .from(PROFILE_PICTURES_BUCKET)
-                .createSignedUrl(tenant.profile_picture_url!, 60 * 60 * 24);
-
-              if (!signedError && signedData?.signedUrl) {
-                urlsMap[tenant.id] = signedData.signedUrl;
-              }
-            } catch (err) {
-              console.error(`Error fetching profile picture for tenant ${tenant.id}:`, err);
-            }
-          })
-      );
-      setProfilePictureUrls((prev) => ({ ...prev, ...urlsMap }));
-      setTenants(transformedData);
+      invalidateTenantsData(queryClient);
       setConfirmModalOpen(false);
       setSelectedTenant(null);
       setConfirmAction(null);
@@ -366,10 +254,10 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     try {
       const supabaseClient = getAuthenticatedSupabase();
       
-      // Update tenant to rejected (approved = false)
+      // Update tenant to rejected
       const { error } = await supabaseClient
         .from('users')
-        .update({ approved: false })
+        .update({ approved: APPROVAL_STATUS.rejected })
         .eq('id', selectedTenant.id);
 
       if (error) {
@@ -377,65 +265,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         throw error;
       }
 
-      // Refresh tenants list
-      const { data: userData } = await supabaseClient.auth.getUser();
-      
-      if (!userData.user) {
-        throw new Error('User not found');
-      }
-
-      const { data: pmData, error: pmError } = await supabaseClient
-        .from('users')
-        .select('property_id')
-        .eq('id', userData.user.id)
-        .eq('role', 'pm')
-        .single();
-
-      if (pmError) throw pmError;
-      
-      const { data: tenantsData, error: tenantsError } = await supabaseClient
-        .from('users')
-        .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, property_name, email_verified')
-        .eq('property_id', pmData.property_id)
-        .eq('role', 'tenant')
-        .order('created_at', { ascending: false });
-
-      if (tenantsError) throw tenantsError;
-
-      const transformedData: Tenant[] = tenantsData.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        email: t.email,
-        role: t.role,
-        approved: t.approved,
-        created_at: t.created_at,
-        profile_picture_url: t.profile_picture_url,
-        unit_number: t.unit_number,
-        property_name: t.property_name,
-        email_verified: t.email_verified,
-      }));
-
-      // Fetch profile picture URLs
-      const urlsMap: Record<string, string> = {};
-      await Promise.all(
-        transformedData
-          .filter((t) => t.profile_picture_url)
-          .map(async (tenant) => {
-            try {
-              const { data: signedData, error: signedError } = await supabaseClient.storage
-                .from(PROFILE_PICTURES_BUCKET)
-                .createSignedUrl(tenant.profile_picture_url!, 60 * 60 * 24);
-
-              if (!signedError && signedData?.signedUrl) {
-                urlsMap[tenant.id] = signedData.signedUrl;
-              }
-            } catch (err) {
-              console.error(`Error fetching profile picture for tenant ${tenant.id}:`, err);
-            }
-          })
-      );
-      setProfilePictureUrls((prev) => ({ ...prev, ...urlsMap }));
-      setTenants(transformedData);
+      invalidateTenantsData(queryClient);
       setConfirmModalOpen(false);
       setSelectedTenant(null);
       setConfirmAction(null);
@@ -508,41 +338,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         }));
       }
 
-      // Refresh tenants list
-      const { data: userData } = await supabaseClient.auth.getUser();
-      if (userData.user) {
-        const { data: pmData } = await supabaseClient
-          .from('users')
-          .select('property_id')
-          .eq('id', userData.user.id)
-          .eq('role', 'pm')
-          .single();
-
-        if (pmData?.property_id) {
-          const { data: tenantsData } = await supabaseClient
-            .from('users')
-            .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, property_name, email_verified')
-            .eq('property_id', pmData.property_id)
-            .eq('role', 'tenant')
-            .order('created_at', { ascending: false });
-
-          if (tenantsData) {
-            const transformedData: Tenant[] = tenantsData.map((t: any) => ({
-              id: t.id,
-              name: t.name,
-              email: t.email,
-              role: t.role,
-              approved: t.approved,
-              created_at: t.created_at,
-              profile_picture_url: t.profile_picture_url,
-              unit_number: t.unit_number,
-              property_name: t.property_name,
-              email_verified: t.email_verified,
-            }));
-            setTenants(transformedData);
-          }
-        }
-      }
+      invalidateTenantsData(queryClient);
     } catch (err: any) {
       console.error('Error uploading profile picture:', err);
       alert('Failed to upload profile picture. Please try again.');
@@ -585,7 +381,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
         name: tenantData.name,
         email: tenantData.email,
         role: tenantData.role,
-        approved: tenantData.approved,
+        approved: normalizeApprovalStatus(tenantData.approved),
         created_at: tenantData.created_at,
         profile_picture_url: tenantData.profile_picture_url,
         unit_number: tenantData.unit_number,
@@ -647,7 +443,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     });
   };
 
-  const pendingCount = tenants.filter((tenant) => !tenant.approved).length;
+  const pendingCount = tenants.filter((tenant) => isPending(tenant.approved)).length;
 
   // Show invite form if state is set
   if (showInviteNewTenants) {
@@ -733,6 +529,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                 <option value="All">All</option>
                 <option value="Approved">Approved</option>
                 <option value="Pending">Pending</option>
+                <option value="Rejected">Rejected</option>
               </select>
               <ChevronDown
                 className={`absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${
@@ -836,10 +633,15 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                       </div>
                     </td>
                     <td className="py-4 px-6">
-                      {tenant.approved ? (
+                      {isApproved(tenant.approved) ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
                           <Check className="w-3 h-3" />
                           Approved
+                        </span>
+                      ) : isRejected(tenant.approved) ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
+                          <XIcon className="w-3 h-3" />
+                          Rejected
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-md text-xs font-medium">
@@ -860,7 +662,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                           <Info className="w-3 h-3" />
                           Details
                         </button>
-                        {!tenant.approved ? (
+                        {isPending(tenant.approved) ? (
                           <>
                             <button 
                               onClick={() => handleApproveClick(tenant)}
@@ -877,13 +679,21 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                               Reject
                             </button>
                           </>
-                        ) : (
+                        ) : isApproved(tenant.approved) ? (
                           <button 
                             onClick={() => handleRejectClick(tenant)}
                             className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
                           >
                             <XIcon className="w-3 h-3" />
                             Revoke
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleApproveClick(tenant)}
+                            className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
+                          >
+                            <Check className="w-3 h-3" />
+                            Approve
                           </button>
                         )}
                       </div>
@@ -1035,10 +845,15 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                           <span className="capitalize">{tenantDetails.role || 'N/A'}</span>
                         </div>
                         <div className="flex items-center">
-                          {tenantDetails.approved ? (
+                          {isApproved(tenantDetails.approved) ? (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
                               <Check className="w-4 h-4" />
                               Approved
+                            </span>
+                          ) : isRejected(tenantDetails.approved) ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium">
+                              <XIcon className="w-4 h-4" />
+                              Rejected
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-md text-sm font-medium">
@@ -1106,7 +921,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                   >
                     Close
                   </button>
-                  {!tenantDetails.approved && (
+                  {!isApproved(tenantDetails.approved) && (
                     <button
                       onClick={() => {
                         setDetailsModalOpen(false);
@@ -1116,6 +931,18 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
                     >
                       <Check className="w-4 h-4 inline mr-2" />
                       Approve Tenant
+                    </button>
+                  )}
+                  {!isRejected(tenantDetails.approved) && (
+                    <button
+                      onClick={() => {
+                        setDetailsModalOpen(false);
+                        handleRejectClick(tenantDetails);
+                      }}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <XIcon className="w-4 h-4 inline mr-2" />
+                      {isApproved(tenantDetails.approved) ? 'Revoke' : 'Reject'} Tenant
                     </button>
                   )}
                 </div>
