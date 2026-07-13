@@ -680,6 +680,14 @@ const pendingWorkOrdersContextValue = useMemo(
     return (
       <Subscription
         onSuccess={handleSubscriptionSuccess}
+        onBack={() => {
+          setShowSubscription(false)
+          setSubscriptionPrefill({
+            name: '',
+            email: '',
+            propertyName: '',
+          })
+        }}
         initialName={subscriptionPrefill.name}
         initialEmail={subscriptionPrefill.email}
         initialPropertyName={subscriptionPrefill.propertyName}

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
 import { supabase } from '../lib/supabase';
+import AsineLogo from './AsineLogo';
+import logoFinal from '../assets/Logo-Final.png';
 
 interface LoginProps {
   onLogin: () => void;
@@ -235,10 +237,9 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
       <div className="w-full max-w-md">
         {/* Login Card */}
         <div className="bg-white rounded-xl shadow-sm p-8">
-          {/* Title */}
-          <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
-            Sign in
-          </h1>
+          <div className="flex justify-center mb-8">
+            <AsineLogo size="login" src={logoFinal} />
+          </div>
 
           {/* Payment Success Message */}
           {showPaymentSuccess && (
@@ -386,34 +387,20 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
             </button>
           </form>
 
-          {/* Additional Info */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-500 mb-4">
-              Test: mrjpjay2@gmail.com
-            </p>
-            
-            {/* Subscription Link */}
-            {onShowSubscription && (
-              <div className="border-t pt-4">
-                <p className="text-sm text-gray-500 mb-3">
-                  New Property Manager?
-                </p>
-                <button
-                  onClick={onShowSubscription}
-                  className="text-teal-600 hover:text-teal-700 font-medium text-sm transition-colors"
-                >
-                  Create Account & Subscribe →
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-500">
-            Super Admin Dashboard
-          </p>
+          {/* Subscription Link */}
+          {onShowSubscription && (
+            <div className="mt-6 text-center border-t pt-4">
+              <p className="text-sm text-gray-500 mb-3">
+                New Property Manager?
+              </p>
+              <button
+                onClick={onShowSubscription}
+                className="text-teal-600 hover:text-teal-700 font-medium text-sm transition-colors"
+              >
+                Create Account & Subscribe →
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

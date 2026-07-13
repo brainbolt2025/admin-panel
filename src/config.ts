@@ -1,48 +1,35 @@
-// Environment configuration
-const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'development'
+// Environment configuration — prefer Vite env vars (.env.development / .env.production)
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL || 'https://qmhmgjzkpfzxfjdurigu.supabase.co'
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
 
-// Debug logging
-console.log('Environment detected:', isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION')
-console.log('Vite DEV mode:', import.meta.env.DEV)
 console.log('Vite MODE:', import.meta.env.MODE)
+console.log('Supabase URL:', supabaseUrl)
 
 export const config = {
-  // Supabase configuration - Dynamic based on environment
   supabase: {
-    url: isDevelopment 
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co'  // Development project
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co', // Production project
-    anonKey: isDevelopment
-      ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvbGpieXZybmt0eHd0bmpvbWFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2MTM0NzcsImV4cCI6MjA3NzE4OTQ3N30.qUU-teO-8RSitnM6GemwjcaezVDD6eJcNYUmxL8O5Bw'  // Development anon key
-      : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtaG1nanprcGZ6eGZqZHVyaWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyNDcwODcsImV4cCI6MjA3NjgyMzA4N30.ALgIUUSgxuDaaEIuh-izKHAcRiWURLjje4jxUDalC1Y'
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   },
-  
-  // Stripe configuration
+
   stripe: {
-    publicKey: import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51SMW5PLC1RJAUbjMm3YeYK0X7UDOApodSWG603SAE7hUgHjdmPsIYRIgdaATq0EpRbcq4tiDzobtcyydFsEbGC7y00oz597a74',
-    monthlyPriceId: import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID || 'price_1SMzASLC1RJAUbjMZVUqQCY0',
-    yearlyPriceId: import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID || 'price_1SMzB3LC1RJAUbjMB57Ph1dI'
+    publicKey:
+      import.meta.env.VITE_STRIPE_PUBLIC_KEY ||
+      'pk_test_51SMW5PLC1RJAUbjMm3YeYK0X7UDOApodSWG603SAE7hUgHjdmPsIYRIgdaATq0EpRbcq4tiDzobtcyydFsEbGC7y00oz597a74',
+    monthlyPriceId:
+      import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID || 'price_1SMzASLC1RJAUbjMZVUqQCY0',
+    yearlyPriceId:
+      import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID || 'price_1SMzB3LC1RJAUbjMB57Ph1dI',
   },
-  
-  // API endpoints - Dynamic based on environment
+
   api: {
-    createUser: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-user'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-user',
-    createStripeCustomer: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-stripe-customer'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-stripe-customer',
-    createSubscription: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/create-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/create-subscription',
-    cancelSubscription: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/cancel-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/cancel-subscription',
-    reactivateSubscription: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/reactivate-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/reactivate-subscription',
-    renewSubscription: isDevelopment
-      ? 'https://goljbyvrnktxwtnjomaq.supabase.co/functions/v1/renew-subscription'
-      : 'https://qmhmgjzkpfzxfjdurigu.supabase.co/functions/v1/renew-subscription'
-  }
+    createUser: `${supabaseUrl}/functions/v1/create-user`,
+    createStripeCustomer: `${supabaseUrl}/functions/v1/create-stripe-customer`,
+    createSubscription: `${supabaseUrl}/functions/v1/create-subscription`,
+    cancelSubscription: `${supabaseUrl}/functions/v1/cancel-subscription`,
+    reactivateSubscription: `${supabaseUrl}/functions/v1/reactivate-subscription`,
+    renewSubscription: `${supabaseUrl}/functions/v1/renew-subscription`,
+  },
 }
