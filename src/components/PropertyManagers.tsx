@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, ChevronDown, ArrowUp, Check, Clock, Minus } from 'lucide-react';
 import InvitePM from './InvitePM';
 import { getAuthenticatedSupabase } from '../lib/supabase';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface PropertyManager {
   id: string;
@@ -118,7 +119,7 @@ const PropertyManagers = () => {
         setPropertyManagers(transformed);
       } catch (fetchError: any) {
         console.error('Error fetching property managers:', fetchError);
-        setError(fetchError?.message || 'Failed to load property managers.');
+        setError(toUserFacingError(fetchError, 'Unable to load property managers. Please try again.'));
       } finally {
         setLoading(false);
       }

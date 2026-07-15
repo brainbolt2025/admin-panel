@@ -66,9 +66,14 @@ async function getPmPropertyId(): Promise<string | null> {
     .select('property_id')
     .eq('id', userData.user.id)
     .eq('role', 'pm')
-    .single()
+    .maybeSingle()
 
-  if (pmError) throw pmError
+  // No PM profile row — treat as no property (empty lists) instead of a hard error
+  if (pmError) {
+    if (pmError.code === 'PGRST116') return null
+    throw pmError
+  }
+
   return pmData?.property_id ?? null
 }
 
@@ -195,6 +200,8 @@ function transformWorkOrders(ordersData: any[]): PmWorkOrder[] {
 export async function fetchWorkOrdersQuery(): Promise<PmWorkOrder[]> {
   const supabaseClient = getAuthenticatedSupabase()
 
+  // Avoid PostgREST embeds on users — tenant_id FK may be missing from schema cache.
+  // Prefer denormalized tenant_name; resolve names in a follow-up query when needed.
   const { data: ordersData, error: ordersError } = await supabaseClient
     .from('work_orders')
     .select(`
@@ -208,15 +215,46 @@ export async function fetchWorkOrdersQuery(): Promise<PmWorkOrder[]> {
       property_id,
       technician_id,
       unit_number,
-      created_at,
-      tenant:users!tenant_id(name)
+      created_at
     `)
     .order('id', { ascending: false })
 
   if (ordersError) throw ordersError
   if (!ordersData || ordersData.length === 0) return []
 
-  return transformWorkOrders(ordersData)
+  const missingTenantIds = [
+    ...new Set(
+      ordersData
+        .filter((order) => !order.tenant_name && order.tenant_id)
+        .map((order) => order.tenant_id as string)
+    ),
+  ]
+
+  let tenantNamesById: Record<string, string> = {}
+  if (missingTenantIds.length > 0) {
+    const { data: tenants, error: tenantsError } = await supabaseClient
+      .from('users')
+      .select('id, name')
+      .in('id', missingTenantIds)
+
+    if (tenantsError) {
+      console.error('Failed to resolve tenant names for work orders:', tenantsError)
+    } else {
+      tenantNamesById = Object.fromEntries(
+        (tenants ?? []).map((tenant) => [tenant.id, tenant.name || 'N/A'])
+      )
+    }
+  }
+
+  const enriched = ordersData.map((order) => ({
+    ...order,
+    tenant_name:
+      order.tenant_name ||
+      (order.tenant_id ? tenantNamesById[order.tenant_id] : null) ||
+      null,
+  }))
+
+  return transformWorkOrders(enriched)
 }
 
 export async function fetchPendingWorkOrdersCount(

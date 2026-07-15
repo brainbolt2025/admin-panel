@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Mail, Shield, Building, Calendar, LogOut, XCircle, AlertCircle, Check, AlertTriangle } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface UserProfile {
   id: string;
@@ -78,7 +79,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         } as UserProfile);
       } catch (err) {
         console.error('Error loading profile:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load profile');
+        setError(toUserFacingError(err, 'Unable to load profile. Please try again.'));
       } finally {
         setLoading(false);
       }
@@ -103,8 +104,22 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Error: {error}</p>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-lg mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">{error}</p>
+          </div>
+          {onLogout && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full bg-red-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-medium hover:bg-red-700 transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -113,8 +128,22 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
   if (!profile) {
     return (
       <div className="p-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800">No profile data found</p>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-lg mx-auto">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800">No profile data found</p>
+          </div>
+          {onLogout && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full bg-red-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-medium hover:bg-red-700 transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -187,7 +216,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
       window.location.reload();
     } catch (err) {
       console.error('Error cancelling subscription:', err);
-      setCancelError(err instanceof Error ? err.message : 'Failed to cancel subscription');
+      setCancelError(toUserFacingError(err, 'Unable to cancel subscription. Please try again.'));
     } finally {
       setCancelling(false);
     }
@@ -226,7 +255,7 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
       window.location.reload();
     } catch (err) {
       console.error('Error reactivating subscription:', err);
-      setReactivateError(err instanceof Error ? err.message : 'Failed to reactivate subscription');
+      setReactivateError(toUserFacingError(err, 'Unable to reactivate subscription. Please try again.'));
     } finally {
       setReactivating(false);
     }

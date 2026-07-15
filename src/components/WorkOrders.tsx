@@ -7,6 +7,7 @@ import { queryKeys } from '../lib/queryKeys';
 import { fetchWorkOrdersQuery } from '../lib/pmQueries';
 import { invalidateWorkOrdersData } from '../lib/invalidatePmData';
 import { APPROVAL_STATUS } from '../lib/approvalStatus';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface WorkOrder {
   id: string;
@@ -105,7 +106,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   });
 
   const errorWorkOrders = workOrdersQueryError
-    ? (workOrdersQueryError as Error).message || 'Failed to load work orders'
+    ? toUserFacingError(workOrdersQueryError, 'Unable to load work orders. Please try again.')
     : null;
 
   // State for search and filters
@@ -271,7 +272,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       setMediaFiles(filesWithUrls.filter((file): file is WorkOrderMediaFile => file !== null));
     } catch (err: any) {
       console.error('Error fetching work order media:', err);
-      setMediaError(err.message || 'Failed to load work order media');
+      setMediaError(toUserFacingError(err, 'Unable to load work order media. Please try again.'));
       setMediaFiles([]);
     } finally {
       setLoadingMedia(false);

@@ -11,6 +11,7 @@ import {
   fetchWorkOrdersQuery,
 } from '../lib/pmQueries';
 import { isApproved } from '../lib/approvalStatus';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface DashboardProps {
   onNavigateToTenant?: (tenantName: string) => void;
@@ -81,15 +82,19 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
     [tenantsData?.tenants]
   );
 
+  if (workOrdersQueryError) {
+    console.error('Failed to load work orders:', workOrdersQueryError)
+  }
+  if (tenantsQueryError) {
+    console.error('Failed to load tenants:', tenantsQueryError)
+  }
+
   const errorWorkOrders = workOrdersQueryError
-    ? (workOrdersQueryError as Error).message?.includes('infinite recursion') ||
-      (workOrdersQueryError as Error).message?.includes('policy')
-      ? 'Permission error: Please check database policies. Contact administrator.'
-      : (workOrdersQueryError as Error).message || 'Failed to load work orders'
+    ? toUserFacingError(workOrdersQueryError, 'Unable to load work orders. Please try again.')
     : null;
 
   const errorTenants = tenantsQueryError
-    ? (tenantsQueryError as Error).message || 'Failed to load tenants'
+    ? toUserFacingError(tenantsQueryError, 'Unable to load tenants. Please try again.')
     : null;
 
   // Overview cards for Super Admin

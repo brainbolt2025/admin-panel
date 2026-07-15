@@ -15,6 +15,7 @@ import {
   normalizeApprovalStatus,
   type ApprovalStatus,
 } from '../lib/approvalStatus';
+import { toUserFacingError } from '../lib/userFacingError';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -67,7 +68,7 @@ const Technicians = () => {
   const technicians = techniciansData?.technicians ?? [];
   const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
   const errorTechnicians = techniciansQueryError
-    ? (techniciansQueryError as Error).message || 'Failed to load technicians'
+    ? toUserFacingError(techniciansQueryError, 'Unable to load technicians. Please try again.')
     : null;
 
   useEffect(() => {

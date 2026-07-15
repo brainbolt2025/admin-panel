@@ -16,6 +16,7 @@ import {
   normalizeApprovalStatus,
   type ApprovalStatus,
 } from '../lib/approvalStatus';
+import { toUserFacingError } from '../lib/userFacingError';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -77,7 +78,7 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
   const tenants = tenantsData?.tenants ?? [];
   const [profilePictureUrls, setProfilePictureUrls] = useState<Record<string, string>>({});
   const errorTenants = tenantsQueryError
-    ? (tenantsQueryError as Error).message || 'Failed to load tenants'
+    ? toUserFacingError(tenantsQueryError, 'Unable to load tenants. Please try again.')
     : null;
 
   useEffect(() => {

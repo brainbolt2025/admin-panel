@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Mail, Search, Send, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface WaitlistEntry {
   id: string;
@@ -69,7 +70,7 @@ const Waitlist = () => {
       setEntries(data || []);
     } catch (err) {
       console.error('Error fetching waitlist:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch waitlist entries');
+      setError(toUserFacingError(err, 'Unable to load waitlist. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -129,7 +130,7 @@ const Waitlist = () => {
       setEmailMessage('');
     } catch (err) {
       console.error('Error sending bulk email:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send bulk email');
+      setError(toUserFacingError(err, 'Unable to send emails. Please try again.'));
     } finally {
       setSending(false);
     }
