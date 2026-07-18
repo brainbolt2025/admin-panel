@@ -440,27 +440,16 @@ serve(async (req) => {
     let emailError: string | null = null
     
     try {
-      // Determine redirect URL based on environment
-      // For mobile apps (tenants/technicians), use deep link scheme or public URL
-      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-      const isTestMode = stripeSecretKey.startsWith('sk_test_')
-      
-      // Get deep link configuration (prefer tenant-specific settings)
-      let TENANT_APP_DEEP_LINK_SCHEME = Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') || Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-      let TENANT_APP_URL = Deno.env.get('TENANT_APP_URL') || Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
-      
-      // Determine redirect URL
-      let redirectTo: string
-      if (TENANT_APP_DEEP_LINK_SCHEME) {
-        // Use deep link scheme for mobile app
-        redirectTo = `${TENANT_APP_DEEP_LINK_SCHEME}auth/verified`
-      } else if (TENANT_APP_URL) {
-        // Use configured app URL
-        redirectTo = `${TENANT_APP_URL}/auth/verified`
-      } else {
-        // Fallback: use admin panel URL (public web URL that can handle verification)
-        redirectTo = isTestMode ? 'https://admin.asine.app/auth/verified' : 'https://admin.asine.app/auth/verified'
-      }
+      // Temporary: send verification redirects to local admin panel for testing.
+      // Override with TENANT_APP_URL / SITE_URL when ready for mobile/prod again.
+      const TENANT_APP_URL =
+        Deno.env.get('TENANT_APP_URL') ||
+        Deno.env.get('APP_URL') ||
+        Deno.env.get('SITE_URL') ||
+        Deno.env.get('BASE_URL') ||
+        'http://localhost:5173'
+
+      const redirectTo = TENANT_APP_URL.replace(/\/$/, '')
       
       console.log('Generating verification link with redirect_to:', redirectTo)
       
@@ -500,22 +489,12 @@ serve(async (req) => {
         } else {
           console.log('Found action_link:', actionLink.substring(0, 100) + '...')
           
-          // Use Supabase's action_link directly, but update redirect_to for deep linking
-          const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-          const isTestMode = stripeSecretKey.startsWith('sk_test_')
-          
-          // Get deep link configuration (prefer tenant-specific settings)
-          let TENANT_APP_DEEP_LINK_SCHEME = Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') || Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-          let TENANT_APP_URL = Deno.env.get('TENANT_APP_URL') || Deno.env.get('APP_URL') || Deno.env.get('BASE_URL') || ''
-          
-          // Use Supabase's action_link directly without modifying redirect_to
-          // The action_link already points to Supabase's verification endpoint
-          // which will verify the email automatically when clicked
-          // For mobile apps, the redirect_to in the original link should handle deep linking
+          // Use Supabase's action_link directly — it verifies email, then redirects to redirect_to
           const verifyLink = actionLink
           
           console.log('Verification link configured:', {
             actionLink: actionLink.substring(0, 150) + '...',
+            redirectTo,
             note: 'Using Supabase action_link directly for email verification'
           })
           

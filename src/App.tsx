@@ -31,6 +31,7 @@ import {
   invalidateWorkOrdersData,
 } from './lib/invalidatePmData'
 import { normalizeApprovalStatus, type ApprovalStatus } from './lib/approvalStatus'
+import { config } from './config'
 
 interface UserProfile {
   id: string
@@ -56,6 +57,11 @@ function App() {
   const [showRenewSubscription, setShowRenewSubscription] = useState(false)
   const [showResetPassword, setShowResetPassword] = useState(false)
   const paymentPollStartedRef = useRef(false)
+  const emailVerificationHandledRef = useRef(false)
+  const [emailVerificationNotice, setEmailVerificationNotice] = useState<{
+    type: 'success' | 'error' | 'pending'
+    text: string
+  } | null>(null)
   const [subscriptionPrefill, setSubscriptionPrefill] = useState({
     name: '',
     email: '',
@@ -226,6 +232,87 @@ function App() {
     },
     [syncLocalStorageUser]
   )
+
+  // Verify email from ?token= whether the user is logged in or on the login screen.
+  // (Resend from EmailVerificationBanner happens while logged in.)
+  useEffect(() => {
+    if (emailVerificationHandledRef.current) return
+
+    let token: string | null = null
+    try {
+      const url = new URL(window.location.href)
+      token = url.searchParams.get('token')
+      // Password recovery uses different params; skip bare recovery flows
+      if (url.searchParams.get('type') === 'recovery') return
+    } catch {
+      return
+    }
+
+    if (!token) return
+
+    emailVerificationHandledRef.current = true
+    setEmailVerificationNotice({
+      type: 'pending',
+      text: 'Verifying your email…',
+    })
+
+    const clearTokenFromUrl = () => {
+      if (!window.history.replaceState) return
+      const url = new URL(window.location.href)
+      url.searchParams.delete('token')
+      const next = `${url.pathname}${url.search}${url.hash}`
+      window.history.replaceState({}, document.title, next || '/')
+    }
+
+    const verifyEmail = async () => {
+      try {
+        const response = await fetch(
+          `${config.supabase.url}/functions/v1/verify-email?token=${encodeURIComponent(token!)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: config.supabase.anonKey,
+            },
+          }
+        )
+        const data = await response.json().catch(() => ({}))
+
+        if (response.ok && data.success) {
+          setEmailVerificationNotice({
+            type: 'success',
+            text: 'Email verified successfully.',
+          })
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          if (session?.user?.id) {
+            await loadUserProfile(session.user.id)
+          }
+        } else {
+          const errorMsg =
+            data.error || 'Verification failed. The link may be expired or invalid.'
+          const hintMsg = data.hint ? ` ${data.hint}` : ''
+          setEmailVerificationNotice({
+            type: 'error',
+            text: `${errorMsg}${hintMsg}`,
+          })
+          console.error('Email verification failed:', data)
+        }
+      } catch (error) {
+        console.error('Email verification error:', error)
+        setEmailVerificationNotice({
+          type: 'error',
+          text: 'An error occurred during verification. Please try again.',
+        })
+      } finally {
+        clearTokenFromUrl()
+        window.setTimeout(() => setEmailVerificationNotice(null), 8000)
+      }
+    }
+
+    void verifyEmail()
+  }, [loadUserProfile])
 
   const clearStoredSession = useCallback(() => {
     localStorage.removeItem('access_token')
@@ -659,61 +746,86 @@ const pendingWorkOrdersContextValue = useMemo(
     )
   }
 
+  const emailVerificationBanner = emailVerificationNotice ? (
+    <div
+      className={`fixed top-0 inset-x-0 z-[60] px-4 py-3 text-center text-sm font-medium ${
+        emailVerificationNotice.type === 'success'
+          ? 'bg-green-600 text-white'
+          : emailVerificationNotice.type === 'error'
+            ? 'bg-red-600 text-white'
+            : 'bg-blue-600 text-white'
+      }`}
+      role="status"
+    >
+      {emailVerificationNotice.text}
+    </div>
+  ) : null
+
   // Show renew subscription page (for cancelled subscriptions)
   if (showRenewSubscription && userProfile?.role === 'pm') {
     return (
-      <RenewSubscription
-        onSuccess={() => {
-          setShowRenewSubscription(false)
-          // Reload user profile to refresh subscription status
-          if (userProfile?.id) {
-            loadUserProfile(userProfile.id).catch(console.error)
-          }
-        }}
-        onLogout={handleLogout}
-      />
+      <>
+        {emailVerificationBanner}
+        <RenewSubscription
+          onSuccess={() => {
+            setShowRenewSubscription(false)
+            // Reload user profile to refresh subscription status
+            if (userProfile?.id) {
+              loadUserProfile(userProfile.id).catch(console.error)
+            }
+          }}
+          onLogout={handleLogout}
+        />
+      </>
     )
   }
 
   // Show subscription page (no authentication required)
   if (showSubscription) {
     return (
-      <Subscription
-        onSuccess={handleSubscriptionSuccess}
-        onBack={() => {
-          setShowSubscription(false)
-          setSubscriptionPrefill({
-            name: '',
-            email: '',
-            propertyName: '',
-          })
-        }}
-        initialName={subscriptionPrefill.name}
-        initialEmail={subscriptionPrefill.email}
-        initialPropertyName={subscriptionPrefill.propertyName}
-      />
+      <>
+        {emailVerificationBanner}
+        <Subscription
+          onSuccess={handleSubscriptionSuccess}
+          onBack={() => {
+            setShowSubscription(false)
+            setSubscriptionPrefill({
+              name: '',
+              email: '',
+              propertyName: '',
+            })
+          }}
+          initialName={subscriptionPrefill.name}
+          initialEmail={subscriptionPrefill.email}
+          initialPropertyName={subscriptionPrefill.propertyName}
+        />
+      </>
     )
   }
 
   // Show login screen if not logged in
   if (!isLoggedIn) {
     return (
-      <Login
-        onLogin={handleLogin}
-        onShowSubscription={() => {
-          setSubscriptionPrefill({
-            name: '',
-            email: '',
-            propertyName: '',
-          })
-          setShowSubscription(true)
-        }}
-      />
+      <>
+        {emailVerificationBanner}
+        <Login
+          onLogin={handleLogin}
+          onShowSubscription={() => {
+            setSubscriptionPrefill({
+              name: '',
+              email: '',
+              propertyName: '',
+            })
+            setShowSubscription(true)
+          }}
+        />
+      </>
     )
   }
 
   return (
     <PendingWorkOrdersProvider value={pendingWorkOrdersContextValue}>
+      {emailVerificationBanner}
       <div className="min-h-screen bg-gray-100 flex">
         <Sidebar 
           isOpen={sidebarOpen} 
