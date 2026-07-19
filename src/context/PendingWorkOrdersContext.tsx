@@ -4,9 +4,15 @@ export interface PendingWorkOrdersContextValue {
   pendingCount: number
   pendingTechniciansCount: number
   pendingTenantsCount: number
+  hasUnseenWorkOrders: boolean
+  hasUnseenTechnicians: boolean
+  hasUnseenTenants: boolean
   refreshPendingCount: () => void
   refreshPendingTechniciansCount: () => void
   refreshPendingTenantsCount: () => void
+  acknowledgeWorkOrders: () => void
+  acknowledgeTechnicians: () => void
+  acknowledgeTenants: () => void
 }
 
 const PendingWorkOrdersContext = createContext<PendingWorkOrdersContextValue | undefined>(undefined)

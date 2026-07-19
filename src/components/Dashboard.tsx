@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, Bell, ClipboardList, Users, Building2, Mail } from 'lucide-react';
-import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
+import { ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, User, Wrench, UserPlus, Search, ClipboardList, Users, Building2, Mail } from 'lucide-react';
 import { queryKeys } from '../lib/queryKeys';
 import {
   derivePmWorkOrderStats,
@@ -12,13 +11,21 @@ import {
 } from '../lib/pmQueries';
 import { isApproved } from '../lib/approvalStatus';
 import { toUserFacingError } from '../lib/userFacingError';
+import AlertsBell from './AlertsBell';
 
 interface DashboardProps {
   onNavigateToTenant?: (tenantName: string) => void;
   onNavigateToWorkOrder?: (workOrderId: string) => void;
+  onNavigateToTechnicians?: () => void;
+  onNavigateToTenants?: () => void;
 }
 
-const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps) => {
+const Dashboard = ({
+  onNavigateToTenant,
+  onNavigateToWorkOrder,
+  onNavigateToTechnicians,
+  onNavigateToTenants,
+}: DashboardProps) => {
   const getUserRole = () => {
     try {
       const userStr = localStorage.getItem('user');
@@ -39,7 +46,6 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
-  const { pendingCount } = usePendingWorkOrders();
 
   const { data: userName = 'Admin' } = useQuery({
     queryKey: queryKeys.currentUserName,
@@ -236,18 +242,13 @@ const Dashboard = ({ onNavigateToTenant, onNavigateToWorkOrder }: DashboardProps
               </p>
             </div>
 
-            {isPM && (
-              <div className="flex items-center space-x-2 shrink-0">
-                <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                  <Bell className="w-5 h-5 text-gray-600" />
-                  {!loadingWorkOrders && pendingCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
-                      {pendingCount}
-                    </span>
-                  )}
-                </div>
-                <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
-              </div>
+            {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
+              <AlertsBell
+                className="shrink-0"
+                onNavigateToWorkOrder={onNavigateToWorkOrder}
+                onNavigateToTechnicians={onNavigateToTechnicians}
+                onNavigateToTenants={onNavigateToTenants}
+              />
             )}
           </div>
 

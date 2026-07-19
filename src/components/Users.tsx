@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, UserPlus } from 'lucide-react';
+import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, UserPlus } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import InviteNewTenants from './InviteNewTenants';
@@ -8,6 +8,7 @@ import tenantsEmpty from '../assets/tenants-empty.png';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchTenantsQuery } from '../lib/pmQueries';
 import { invalidateTenantsData } from '../lib/invalidatePmData';
+import AlertsBell from './AlertsBell';
 import {
   APPROVAL_STATUS,
   isApproved,
@@ -36,9 +37,18 @@ interface Tenant {
 interface UsersProps {
   selectedTenantFilter?: string | null;
   onClearTenantFilter?: () => void;
+  onNavigateToWorkOrder?: (workOrderId: string) => void;
+  onNavigateToTechnicians?: () => void;
+  onNavigateToTenants?: () => void;
 }
 
-const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
+const Users = ({
+  selectedTenantFilter,
+  onClearTenantFilter,
+  onNavigateToWorkOrder,
+  onNavigateToTechnicians,
+  onNavigateToTenants,
+}: UsersProps) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -444,8 +454,6 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
     });
   };
 
-  const pendingCount = tenants.filter((tenant) => isPending(tenant.approved)).length;
-
   // Show invite form if state is set
   if (showInviteNewTenants) {
     return <InviteNewTenants onBack={() => setShowInviteNewTenants(false)} />;
@@ -481,18 +489,13 @@ const Users = ({ selectedTenantFilter, onClearTenantFilter }: UsersProps) => {
             />
           </div>
 
-          {isPM && (
-            <div className="flex items-center space-x-2 shrink-0">
-              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-5 h-5 text-gray-600" />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
-            </div>
+          {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
+            <AlertsBell
+              className="shrink-0"
+              onNavigateToWorkOrder={onNavigateToWorkOrder}
+              onNavigateToTechnicians={onNavigateToTechnicians}
+              onNavigateToTenants={onNavigateToTenants}
+            />
           )}
         </div>
 

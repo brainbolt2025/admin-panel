@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
 import { supabase } from '../lib/supabase';
+import { consumePmSignupLoginHint } from '../lib/pendingPmSignup';
 import AsineLogo from './AsineLogo';
 import logoFinal from '../assets/Logo-Final.png';
 
@@ -21,7 +22,7 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
-  // Check if user just completed payment
+  // Check if user just completed payment (or auto-login after signup failed)
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   
   useEffect(() => {
@@ -36,6 +37,13 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
       setShowPaymentSuccess(true);
       // Clear the URL parameter
       window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    // App clears payment URL params after attempting auto-login; if that failed,
+    // it leaves a one-shot hint so we still show the success message here.
+    if (consumePmSignupLoginHint()) {
+      setShowPaymentSuccess(true);
     }
   }, []);
 

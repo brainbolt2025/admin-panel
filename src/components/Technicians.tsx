@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Wrench, Mail, Check, X as XIcon, Calendar, Camera, Info, MapPin, Shield, Clock, Bell, Users, Download, Building2, MailCheck, ThumbsUp } from 'lucide-react';
+import { Search, Wrench, Mail, Check, X as XIcon, Calendar, Camera, Info, MapPin, Shield, Clock, Users, Download, Building2, MailCheck, ThumbsUp } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchTechniciansQuery } from '../lib/pmQueries';
 import { invalidateTechniciansData } from '../lib/invalidatePmData';
+import AlertsBell from './AlertsBell';
 import {
   APPROVAL_STATUS,
   isApproved,
@@ -31,7 +32,17 @@ interface Technician {
   email_verified?: boolean | null;
 }
 
-const Technicians = () => {
+interface TechniciansProps {
+  onNavigateToWorkOrder?: (workOrderId: string) => void;
+  onNavigateToTechnicians?: () => void;
+  onNavigateToTenants?: () => void;
+}
+
+const Technicians = ({
+  onNavigateToWorkOrder,
+  onNavigateToTechnicians,
+  onNavigateToTenants,
+}: TechniciansProps) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -110,8 +121,6 @@ const Technicians = () => {
     
     return matchesSearch && matchesStatus;
   });
-
-  const pendingCount = technicians.filter((technician) => isPending(technician.approved)).length;
 
   // Handle profile picture upload
   const handleProfilePictureUpload = async (technicianId: string, file: File) => {
@@ -432,18 +441,12 @@ const Technicians = () => {
           </div>
 
           {/* Right side - Alerts (for PM only) */}
-          {isPM && (
-            <div className="flex items-center space-x-2">
-              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-5 h-5 text-gray-600" />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
-            </div>
+          {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
+            <AlertsBell
+              onNavigateToWorkOrder={onNavigateToWorkOrder}
+              onNavigateToTechnicians={onNavigateToTechnicians}
+              onNavigateToTenants={onNavigateToTenants}
+            />
           )}
         </div>
 

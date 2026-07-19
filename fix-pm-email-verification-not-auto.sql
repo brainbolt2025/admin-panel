@@ -1,25 +1,22 @@
--- App-level email_verified vs Supabase Auth email_confirmed_at
+-- Fix: PMs were marked email_verified=true as soon as Auth was confirmed
+-- (create-user / stripe-webhook), which made the Mailgun verification email pointless.
 --
--- PMs: Auth may be auto-confirmed so they can log in after Stripe, but
--- users.email_verified stays false until they click the Mailgun link
--- (verify-email edge function). Do NOT sync Auth → email_verified for PMs.
+-- Run this in the Supabase SQL Editor, then redeploy:
+--   - create-user
+--   - stripe-webhook
 --
--- Tenants / technicians: still sync Auth confirmation into users.email_verified.
+-- Same logic as sync-email-verification-trigger.sql (PM excluded from Auth sync).
 
 CREATE OR REPLACE FUNCTION sync_email_verification()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Auth confirmed → app verified (non-PM only)
   IF NEW.email_confirmed_at IS NOT NULL AND (OLD.email_confirmed_at IS NULL OR OLD.email_confirmed_at IS DISTINCT FROM NEW.email_confirmed_at) THEN
     UPDATE public.users
     SET email_verified = true
     WHERE id = NEW.id
       AND role IS DISTINCT FROM 'pm';
-
-    RAISE LOG 'Email verification synced for non-PM user: %', NEW.id;
   END IF;
 
-  -- Auth confirmation cleared → clear app verified (all roles)
   IF NEW.email_confirmed_at IS NULL AND OLD.email_confirmed_at IS NOT NULL THEN
     UPDATE public.users
     SET email_verified = false
@@ -60,9 +57,7 @@ CREATE TRIGGER sync_email_verification_insert_trigger
   WHEN (NEW.email_confirmed_at IS NOT NULL)
   EXECUTE FUNCTION sync_email_verification_on_insert();
 
--- Optional: un-verify PMs who still have a pending Mailgun token
--- (auto-synced to verified before clicking the link). Safe for accounts
--- waiting on the verification email.
+-- Un-verify PMs still waiting on the Mailgun link
 UPDATE public.users
 SET email_verified = false
 WHERE role = 'pm'

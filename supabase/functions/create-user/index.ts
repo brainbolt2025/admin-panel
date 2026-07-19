@@ -387,10 +387,13 @@ serve(async (req) => {
           role: 'pm', // CRITICAL: Ensure role is 'pm' not 'tenant'
           approved: 'pending', // Will be approved after payment
           subscribed: false, // Will be updated after payment
-          subscription_status: 'pending'
+          subscription_status: 'pending',
+          // Auth may be auto-confirmed for login, but app verification is separate
+          // (Mailgun link / EmailVerificationBanner). Keep this false until then.
+          email_verified: false,
         })
         .eq('id', authUserId)
-        .select('id, name, email, role, property_name, approved, subscribed, subscription_status')
+        .select('id, name, email, role, property_name, approved, subscribed, subscription_status, email_verified')
         .single()
       
       updatedData = updateResult.data
@@ -437,9 +440,12 @@ serve(async (req) => {
           role: 'pm', // Property Manager role (matches constraint)
           approved: 'pending', // Will be approved after payment
           subscribed: false, // Will be updated after payment
-          subscription_status: 'pending'
+          subscription_status: 'pending',
+          // Auth may be auto-confirmed for login, but app verification is separate
+          // (Mailgun link / EmailVerificationBanner). Keep this false until then.
+          email_verified: false,
         })
-        .select('id, name, email, role, property_name, approved, subscribed, subscription_status')
+        .select('id, name, email, role, property_name, approved, subscribed, subscription_status, email_verified')
         .single()
       
       userData = insertResult.data
@@ -637,6 +643,21 @@ serve(async (req) => {
       }
     } else {
       console.warn('⚠️ No property_name provided, skipping property creation')
+    }
+
+    // Auth is auto-confirmed so PMs can log in immediately, but app-level
+    // verification (banner + Mailgun) stays pending until they confirm.
+    // Force this after insert/triggers that may copy email_confirmed_at → true.
+    const { error: unverifiedError } = await supabase
+      .from('users')
+      .update({ email_verified: false })
+      .eq('id', authUserId)
+
+    if (unverifiedError) {
+      console.error('Failed to set email_verified false:', unverifiedError)
+    } else {
+      console.log('✅ email_verified set to false for PM app verification banner')
+      userData.email_verified = false
     }
 
     // Return success response with user ID and role

@@ -307,6 +307,78 @@ export async function fetchPendingTenantsCount(
   return count ?? 0
 }
 
+export interface PendingAlertWorkOrder {
+  id: string
+  title: string | null
+  tenant_name: string | null
+  status: string | null
+  created_at?: string | null
+}
+
+export interface PendingAlertUser {
+  id: string
+  name: string | null
+  email: string | null
+  created_at?: string | null
+}
+
+export interface PendingAlerts {
+  propertyId: string | null
+  workOrders: PendingAlertWorkOrder[]
+  technicians: PendingAlertUser[]
+  tenants: PendingAlertUser[]
+}
+
+/** Lists pending WO / tech / tenant items for the PM Alerts dialog. */
+export async function fetchPendingAlerts(): Promise<PendingAlerts> {
+  const propertyId = await getPmPropertyId()
+  if (!propertyId) {
+    return { propertyId: null, workOrders: [], technicians: [], tenants: [] }
+  }
+
+  const supabaseClient = getAuthenticatedSupabase()
+
+  const [workOrdersResult, techniciansResult, tenantsResult] = await Promise.all([
+    supabaseClient
+      .from('work_orders')
+      .select('id, title, tenant_name, status, created_at')
+      .eq('property_id', propertyId)
+      .eq('status', 'Pending')
+      .order('created_at', { ascending: false }),
+    supabaseClient
+      .from('users')
+      .select('id, name, email, created_at')
+      .eq('property_id', propertyId)
+      .eq('role', 'technician')
+      .eq('approved', APPROVAL_STATUS.pending)
+      .order('created_at', { ascending: false }),
+    supabaseClient
+      .from('users')
+      .select('id, name, email, created_at')
+      .eq('property_id', propertyId)
+      .eq('role', 'tenant')
+      .eq('approved', APPROVAL_STATUS.pending)
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (workOrdersResult.error) throw workOrdersResult.error
+  if (techniciansResult.error) throw techniciansResult.error
+  if (tenantsResult.error) throw tenantsResult.error
+
+  return {
+    propertyId,
+    workOrders: (workOrdersResult.data ?? []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      tenant_name: row.tenant_name,
+      status: row.status,
+      created_at: row.created_at,
+    })),
+    technicians: techniciansResult.data ?? [],
+    tenants: tenantsResult.data ?? [],
+  }
+}
+
 export async function fetchCurrentUserName(): Promise<string> {
   try {
     const supabaseClient = getAuthenticatedSupabase()

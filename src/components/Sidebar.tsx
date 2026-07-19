@@ -37,7 +37,14 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
 
   const userRole = getUserRole();
   const isPM = userRole === 'pm';
-  const { pendingCount, pendingTechniciansCount, pendingTenantsCount } = usePendingWorkOrders();
+  const {
+    hasUnseenWorkOrders,
+    hasUnseenTechnicians,
+    hasUnseenTenants,
+    acknowledgeWorkOrders,
+    acknowledgeTechnicians,
+    acknowledgeTenants,
+  } = usePendingWorkOrders();
 
   // Navigation items for Super Admin
   const adminNavigationItems = [
@@ -99,7 +106,12 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                 return (
                   <li key={item.id}>
                     <div
-                      onClick={() => onActiveItemChange(item.id)}
+                      onClick={() => {
+                        onActiveItemChange(item.id);
+                        if (item.id === 'Work Orders') acknowledgeWorkOrders();
+                        if (item.id === 'Technicians') acknowledgeTechnicians();
+                        if (item.id === 'Tenants') acknowledgeTenants();
+                      }}
                       className={`
                         w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors
                         ${isActive
@@ -112,28 +124,22 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                         <Icon className={`w-5 h-5 ${isActive ? 'text-teal-600' : 'text-gray-500'}`} />
                         <span>{item.label}</span>
                       </span>
-                      {item.id === 'Work Orders' && isPM && pendingCount > 0 && (
+                      {item.id === 'Work Orders' && isPM && hasUnseenWorkOrders && (
                         <span className="ml-3 inline-flex items-center justify-center">
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-                          <span className="sr-only">
-                            {pendingCount} pending work order{pendingCount === 1 ? '' : 's'}
-                          </span>
+                          <span className="sr-only">New pending work orders</span>
                         </span>
                       )}
-                      {item.id === 'Technicians' && isPM && pendingTechniciansCount > 0 && (
+                      {item.id === 'Technicians' && isPM && hasUnseenTechnicians && (
                         <span className="ml-3 inline-flex items-center justify-center">
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-                          <span className="sr-only">
-                            {pendingTechniciansCount} pending technician{pendingTechniciansCount === 1 ? '' : 's'}
-                          </span>
+                          <span className="sr-only">New pending technicians</span>
                         </span>
                       )}
-                      {item.id === 'Tenants' && isPM && pendingTenantsCount > 0 && (
+                      {item.id === 'Tenants' && isPM && hasUnseenTenants && (
                         <span className="ml-3 inline-flex items-center justify-center">
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-                          <span className="sr-only">
-                            {pendingTenantsCount} pending tenant{pendingTenantsCount === 1 ? '' : 's'}
-                          </span>
+                          <span className="sr-only">New pending tenants</span>
                         </span>
                       )}
                     </div>

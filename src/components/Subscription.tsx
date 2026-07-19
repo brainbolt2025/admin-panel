@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, Check, CreditCard, ArrowRight } from 'lucide-react';
 import { config } from '../config';
+import { savePendingPmSignupCredentials } from '../lib/pendingPmSignup';
 import AsineLogo from './AsineLogo';
 import logoFinal from '../assets/Logo-Final.png';
 
@@ -180,6 +181,12 @@ const Subscription = ({
       
       // Redirect to Stripe Checkout
       if (subscriptionData.success && subscriptionData.url) {
+        // Keep credentials only for this browser tab so we can auto-login
+        // after Stripe redirects back (then cleared immediately).
+        savePendingPmSignupCredentials({
+          email: formData.email.trim(),
+          password: formData.password,
+        });
         window.location.href = subscriptionData.url;
       } else {
         throw new Error('No checkout URL received');
