@@ -171,12 +171,14 @@ serve(async (req) => {
           })
           .eq('id', user_id)
 
-        // Automatically confirm email in Supabase Auth to allow login without verification
+        // Confirm Auth email so the PM can log in immediately after payment.
+        // App-level users.email_verified stays false until they click the
+        // Mailgun link (see token update below + verify-email function).
         try {
           await supabaseAdmin.auth.admin.updateUserById(user_id, {
             email_confirm: true,
           })
-          console.log('✅ Email automatically confirmed for PM user:', user_id)
+          console.log('✅ Auth email confirmed for PM login (app verification still pending):', user_id)
         } catch (authError) {
           console.warn('Could not auto-confirm email in Auth:', authError)
           // Don't fail the webhook if this doesn't work - subscription update is primary
@@ -246,10 +248,12 @@ serve(async (req) => {
           .from('users')
           .update({ 
             verification_token: verificationToken,
-            verification_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
+            verification_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+            // Keep app verification pending until Mailgun link is clicked
+            email_verified: false,
           })
           .eq('id', user_id)
-          .select('id, verification_token')
+          .select('id, verification_token, email_verified')
         
         if (tokenUpdateError) {
           console.error('❌ Error storing verification token:', {

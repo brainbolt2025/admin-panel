@@ -1,15 +1,24 @@
 import { useEffect, useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, Check, CreditCard, ArrowRight } from 'lucide-react';
 import { config } from '../config';
+import { savePendingPmSignupCredentials } from '../lib/pendingPmSignup';
+import AsineLogo from './AsineLogo';
+import logoFinal from '../assets/Logo-Final.png';
 
 interface SubscriptionProps {
   onSuccess?: () => void;
+  onBack?: () => void;
   initialName?: string;
   initialEmail?: string;
   initialPropertyName?: string;
 }
 
-const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName = '' }: SubscriptionProps) => {
+const Subscription = ({
+  onBack,
+  initialName = '',
+  initialEmail = '',
+  initialPropertyName = '',
+}: SubscriptionProps) => {
   const [step, setStep] = useState<'pricing' | 'form' | 'success'>('pricing');
   const [selectedPlan, setSelectedPlan] = useState<string>('');
   const [formData, setFormData] = useState({
@@ -172,6 +181,12 @@ const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName
       
       // Redirect to Stripe Checkout
       if (subscriptionData.success && subscriptionData.url) {
+        // Keep credentials only for this browser tab so we can auto-login
+        // after Stripe redirects back (then cleared immediately).
+        savePendingPmSignupCredentials({
+          email: formData.email.trim(),
+          password: formData.password,
+        });
         window.location.href = subscriptionData.url;
       } else {
         throw new Error('No checkout URL received');
@@ -189,11 +204,8 @@ const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="text-center mb-12">
-        <div className="flex items-center justify-center mb-6">
-          <div className="w-12 h-12 bg-teal-600 rounded-xl flex items-center justify-center mr-4">
-            <span className="text-white font-bold text-xl">A</span>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800">Asine</h1>
+        <div className="flex justify-center mb-6">
+          <AsineLogo size="login" src={logoFinal} />
         </div>
         <h2 className="text-2xl font-semibold text-gray-700 mb-2">Activate your account</h2>
         <p className="text-gray-500">Choose the perfect plan for your property management needs</p>
@@ -256,6 +268,19 @@ const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName
           </div>
         ))}
       </div>
+
+      {onBack && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-gray-500 hover:text-teal-600 transition-colors flex items-center justify-center gap-2 mx-auto"
+          >
+            <ArrowRight className="w-4 h-4 rotate-180" />
+            Back to sign in
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -263,11 +288,8 @@ const Subscription = ({ initialName = '', initialEmail = '', initialPropertyName
     <div className="max-w-md mx-auto">
       {/* Header */}
       <div className="text-center mb-8">
-        <div className="flex items-center justify-center mb-4">
-          <div className="w-10 h-10 bg-teal-600 rounded-lg flex items-center justify-center mr-3">
-            <span className="text-white font-bold text-lg">A</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800">Asine</h1>
+        <div className="flex justify-center mb-4">
+          <AsineLogo size="login" src={logoFinal} />
         </div>
         <h2 className="text-xl font-semibold text-gray-700 mb-2">Complete your registration</h2>
         <p className="text-gray-500">Fill in your details to activate your account</p>

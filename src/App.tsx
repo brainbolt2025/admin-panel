@@ -31,6 +31,22 @@ import {
   invalidateWorkOrdersData,
 } from './lib/invalidatePmData'
 import { normalizeApprovalStatus, type ApprovalStatus } from './lib/approvalStatus'
+import { usePendingAcknowledgment } from './lib/usePendingAcknowledgment'
+import {
+  clearPendingPmSignupCredentials,
+  readPendingPmSignupCredentials,
+  setPmSignupLoginHint,
+} from './lib/pendingPmSignup'
+import { config } from './config'
+
+function isNewPmSignupPaymentReturn(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  return (
+    params.get('payment') === 'success' &&
+    !!params.get('session_id') &&
+    params.get('renewal') !== 'true'
+  )
+}
 
 interface UserProfile {
   id: string
@@ -49,6 +65,9 @@ interface UserProfile {
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [isFinalizingSignupPayment, setIsFinalizingSignupPayment] = useState(() =>
+    isNewPmSignupPaymentReturn()
+  )
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
@@ -56,6 +75,12 @@ function App() {
   const [showRenewSubscription, setShowRenewSubscription] = useState(false)
   const [showResetPassword, setShowResetPassword] = useState(false)
   const paymentPollStartedRef = useRef(false)
+  const signupPaymentReturnRef = useRef(isNewPmSignupPaymentReturn())
+  const emailVerificationHandledRef = useRef(false)
+  const [emailVerificationNotice, setEmailVerificationNotice] = useState<{
+    type: 'success' | 'error' | 'pending'
+    text: string
+  } | null>(null)
   const [subscriptionPrefill, setSubscriptionPrefill] = useState({
     name: '',
     email: '',
@@ -143,6 +168,13 @@ function App() {
     queryClient.invalidateQueries({ queryKey: queryKeys.pendingTenants(propertyId) })
   }, [queryClient, propertyId])
 
+  const { hasUnseenPending: hasUnseenWorkOrders, acknowledge: acknowledgeWorkOrders } =
+    usePendingAcknowledgment('work_orders', propertyId, pendingWorkOrdersCount)
+  const { hasUnseenPending: hasUnseenTechnicians, acknowledge: acknowledgeTechnicians } =
+    usePendingAcknowledgment('technicians', propertyId, pendingTechniciansCount)
+  const { hasUnseenPending: hasUnseenTenants, acknowledge: acknowledgeTenants } =
+    usePendingAcknowledgment('tenants', propertyId, pendingTenantsCount)
+
 
   const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
     if (!profile) return
@@ -227,6 +259,87 @@ function App() {
     [syncLocalStorageUser]
   )
 
+  // Verify email from ?token= whether the user is logged in or on the login screen.
+  // (Resend from EmailVerificationBanner happens while logged in.)
+  useEffect(() => {
+    if (emailVerificationHandledRef.current) return
+
+    let token: string | null = null
+    try {
+      const url = new URL(window.location.href)
+      token = url.searchParams.get('token')
+      // Password recovery uses different params; skip bare recovery flows
+      if (url.searchParams.get('type') === 'recovery') return
+    } catch {
+      return
+    }
+
+    if (!token) return
+
+    emailVerificationHandledRef.current = true
+    setEmailVerificationNotice({
+      type: 'pending',
+      text: 'Verifying your email…',
+    })
+
+    const clearTokenFromUrl = () => {
+      if (!window.history.replaceState) return
+      const url = new URL(window.location.href)
+      url.searchParams.delete('token')
+      const next = `${url.pathname}${url.search}${url.hash}`
+      window.history.replaceState({}, document.title, next || '/')
+    }
+
+    const verifyEmail = async () => {
+      try {
+        const response = await fetch(
+          `${config.supabase.url}/functions/v1/verify-email?token=${encodeURIComponent(token!)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: config.supabase.anonKey,
+            },
+          }
+        )
+        const data = await response.json().catch(() => ({}))
+
+        if (response.ok && data.success) {
+          setEmailVerificationNotice({
+            type: 'success',
+            text: 'Email verified successfully.',
+          })
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          if (session?.user?.id) {
+            await loadUserProfile(session.user.id)
+          }
+        } else {
+          const errorMsg =
+            data.error || 'Verification failed. The link may be expired or invalid.'
+          const hintMsg = data.hint ? ` ${data.hint}` : ''
+          setEmailVerificationNotice({
+            type: 'error',
+            text: `${errorMsg}${hintMsg}`,
+          })
+          console.error('Email verification failed:', data)
+        }
+      } catch (error) {
+        console.error('Email verification error:', error)
+        setEmailVerificationNotice({
+          type: 'error',
+          text: 'An error occurred during verification. Please try again.',
+        })
+      } finally {
+        clearTokenFromUrl()
+        window.setTimeout(() => setEmailVerificationNotice(null), 8000)
+      }
+    }
+
+    void verifyEmail()
+  }, [loadUserProfile])
+
   const clearStoredSession = useCallback(() => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
@@ -279,11 +392,8 @@ function App() {
     const sessionId = urlParams.get('session_id')
     const paymentStatus = urlParams.get('payment')
     const isRenewal = urlParams.get('renewal') === 'true'
-    
-    if (paymentStatus === 'success' && sessionId && isRenewal) {
-      console.log('App: Renewal payment successful, session ID:', sessionId)
 
-      // Clear URL parameters so a refresh doesn't reprocess them
+    const clearPaymentParams = () => {
       if (window.history.replaceState) {
         const url = new URL(window.location.href)
         url.searchParams.delete('session_id')
@@ -291,6 +401,11 @@ function App() {
         url.searchParams.delete('renewal')
         window.history.replaceState({}, document.title, url.toString())
       }
+    }
+
+    if (paymentStatus === 'success' && sessionId && isRenewal) {
+      console.log('App: Renewal payment successful, session ID:', sessionId)
+      clearPaymentParams()
 
       // The subscription is finalized by the Stripe webhook, which can lag a
       // moment behind this redirect. Poll the profile until it reflects the
@@ -323,16 +438,71 @@ function App() {
 
         finalizeAfterPayment()
       }
-      // For non-renewal payments, let the Login component handle the redirect
+    } else if (paymentStatus === 'success' && sessionId && !isRenewal) {
+      // New PM signup: auto-login with credentials saved before Stripe redirect
+      if (paymentPollStartedRef.current) return
+      paymentPollStartedRef.current = true
+      clearPaymentParams()
+
+      const finalizeNewPmSignup = async () => {
+        setIsFinalizingSignupPayment(true)
+        const credentials = readPendingPmSignupCredentials()
+
+        try {
+          if (!credentials) {
+            console.warn('App: No pending PM signup credentials after payment; falling back to login')
+            setPmSignupLoginHint()
+            return
+          }
+
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email,
+            password: credentials.password,
+          })
+
+          if (error || !data.session?.user) {
+            console.error('App: Auto-login after PM signup failed:', error)
+            setPmSignupLoginHint()
+            return
+          }
+
+          localStorage.setItem('access_token', data.session.access_token)
+          if (data.session.refresh_token) {
+            localStorage.setItem('refresh_token', data.session.refresh_token)
+          }
+          localStorage.setItem('user', JSON.stringify(data.session.user))
+
+          setIsLoggedIn(true)
+          setShowSubscription(false)
+
+          const uid = data.session.user.id
+          for (let attempt = 0; attempt < 8; attempt++) {
+            try {
+              const profile = await loadUserProfile(uid)
+              if (profile?.subscription_status === 'active') {
+                console.log('App: New PM subscription active after signup payment')
+                break
+              }
+            } catch (profileError) {
+              console.error('Error loading profile after signup payment:', profileError)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+          }
+        } finally {
+          clearPendingPmSignupCredentials()
+          signupPaymentReturnRef.current = false
+          setIsFinalizingSignupPayment(false)
+          setIsCheckingAuth(false)
+        }
+      }
+
+      void finalizeNewPmSignup()
     } else if (paymentStatus === 'cancelled') {
       console.log('App: Payment was cancelled')
-      // Clear URL parameters
-      if (window.history.replaceState) {
-        const url = new URL(window.location.href)
-        url.searchParams.delete('payment')
-        url.searchParams.delete('renewal')
-        window.history.replaceState({}, document.title, url.toString())
-      }
+      clearPendingPmSignupCredentials()
+      clearPaymentParams()
+      signupPaymentReturnRef.current = false
+      setIsFinalizingSignupPayment(false)
     }
   }, [loadUserProfile])
 
@@ -374,7 +544,10 @@ function App() {
         clearStoredSession()
         setIsLoggedIn(false)
       } finally {
-        setIsCheckingAuth(false)
+        // Keep the loading screen up while we auto-login a new PM after Stripe
+        if (!signupPaymentReturnRef.current) {
+          setIsCheckingAuth(false)
+        }
       }
     }
 
@@ -582,17 +755,29 @@ const pendingWorkOrdersContextValue = useMemo(
     pendingCount: pendingWorkOrdersCount,
     pendingTechniciansCount,
     pendingTenantsCount,
+    hasUnseenWorkOrders,
+    hasUnseenTechnicians,
+    hasUnseenTenants,
     refreshPendingCount,
     refreshPendingTechniciansCount,
     refreshPendingTenantsCount,
+    acknowledgeWorkOrders,
+    acknowledgeTechnicians,
+    acknowledgeTenants,
   }),
   [
     pendingWorkOrdersCount,
     pendingTechniciansCount,
     pendingTenantsCount,
+    hasUnseenWorkOrders,
+    hasUnseenTechnicians,
+    hasUnseenTenants,
     refreshPendingCount,
     refreshPendingTechniciansCount,
     refreshPendingTenantsCount,
+    acknowledgeWorkOrders,
+    acknowledgeTechnicians,
+    acknowledgeTenants,
   ],
 )
 
@@ -606,6 +791,20 @@ const pendingWorkOrdersContextValue = useMemo(
     setActiveItem('Tenants')
   }
 
+  const handleNavigateToTechnicians = () => {
+    setActiveItem('Technicians')
+  }
+
+  const handleNavigateToTenants = () => {
+    setActiveItem('Tenants')
+  }
+
+  const alertsNavProps = {
+    onNavigateToWorkOrder: handleNavigateToWorkOrder,
+    onNavigateToTechnicians: handleNavigateToTechnicians,
+    onNavigateToTenants: handleNavigateToTenants,
+  }
+
   const renderContent = () => {
     if (showInvitePM) {
       return <InvitePM onBack={handleBackFromInvitePM} />
@@ -613,23 +812,47 @@ const pendingWorkOrdersContextValue = useMemo(
 
     switch (activeItem) {
       case 'Dashboard':
-        return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
+        return (
+          <Dashboard
+            onNavigateToTenant={handleNavigateToTenant}
+            onNavigateToWorkOrder={handleNavigateToWorkOrder}
+            {...alertsNavProps}
+          />
+        )
       case 'PM Accounts':
         return <PropertyManagers />
       case 'Waitlist':
         return <Waitlist />
       case 'Work Orders':
-        return <WorkOrders selectedWorkOrderId={selectedWorkOrderId} onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)} />
+        return (
+          <WorkOrders
+            selectedWorkOrderId={selectedWorkOrderId}
+            onClearSelectedWorkOrder={() => setSelectedWorkOrderId(null)}
+            {...alertsNavProps}
+          />
+        )
       case 'Tenants':
-        return <Users selectedTenantFilter={selectedTenantFilter} onClearTenantFilter={() => setSelectedTenantFilter(null)} />
+        return (
+          <Users
+            selectedTenantFilter={selectedTenantFilter}
+            onClearTenantFilter={() => setSelectedTenantFilter(null)}
+            {...alertsNavProps}
+          />
+        )
       case 'Technicians':
-        return <Technicians />
+        return <Technicians {...alertsNavProps} />
       case 'Approvals':
         return <Approvals />
       case 'Profile':
         return <Profile onLogout={handleLogout} />
       default:
-        return <Dashboard onNavigateToTenant={handleNavigateToTenant} onNavigateToWorkOrder={handleNavigateToWorkOrder} />
+        return (
+          <Dashboard
+            onNavigateToTenant={handleNavigateToTenant}
+            onNavigateToWorkOrder={handleNavigateToWorkOrder}
+            {...alertsNavProps}
+          />
+        )
     }
   }
 
@@ -647,65 +870,102 @@ const pendingWorkOrdersContextValue = useMemo(
     )
   }
 
-  // Show loading state while checking authentication
-  if (isCheckingAuth) {
+  // Show loading state while checking authentication or finalizing signup payment
+  if (isCheckingAuth || isFinalizingSignupPayment) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Checking authentication...</p>
+          <p className="text-gray-600">
+            {isFinalizingSignupPayment
+              ? 'Activating your account...'
+              : 'Checking authentication...'}
+          </p>
         </div>
       </div>
     )
   }
 
+  const emailVerificationBanner = emailVerificationNotice ? (
+    <div
+      className={`fixed top-0 inset-x-0 z-[60] px-4 py-3 text-center text-sm font-medium ${
+        emailVerificationNotice.type === 'success'
+          ? 'bg-green-600 text-white'
+          : emailVerificationNotice.type === 'error'
+            ? 'bg-red-600 text-white'
+            : 'bg-blue-600 text-white'
+      }`}
+      role="status"
+    >
+      {emailVerificationNotice.text}
+    </div>
+  ) : null
+
   // Show renew subscription page (for cancelled subscriptions)
   if (showRenewSubscription && userProfile?.role === 'pm') {
     return (
-      <RenewSubscription
-        onSuccess={() => {
-          setShowRenewSubscription(false)
-          // Reload user profile to refresh subscription status
-          if (userProfile?.id) {
-            loadUserProfile(userProfile.id).catch(console.error)
-          }
-        }}
-        onLogout={handleLogout}
-      />
+      <>
+        {emailVerificationBanner}
+        <RenewSubscription
+          onSuccess={() => {
+            setShowRenewSubscription(false)
+            // Reload user profile to refresh subscription status
+            if (userProfile?.id) {
+              loadUserProfile(userProfile.id).catch(console.error)
+            }
+          }}
+          onLogout={handleLogout}
+        />
+      </>
     )
   }
 
   // Show subscription page (no authentication required)
   if (showSubscription) {
     return (
-      <Subscription
-        onSuccess={handleSubscriptionSuccess}
-        initialName={subscriptionPrefill.name}
-        initialEmail={subscriptionPrefill.email}
-        initialPropertyName={subscriptionPrefill.propertyName}
-      />
+      <>
+        {emailVerificationBanner}
+        <Subscription
+          onSuccess={handleSubscriptionSuccess}
+          onBack={() => {
+            setShowSubscription(false)
+            setSubscriptionPrefill({
+              name: '',
+              email: '',
+              propertyName: '',
+            })
+          }}
+          initialName={subscriptionPrefill.name}
+          initialEmail={subscriptionPrefill.email}
+          initialPropertyName={subscriptionPrefill.propertyName}
+        />
+      </>
     )
   }
 
   // Show login screen if not logged in
   if (!isLoggedIn) {
     return (
-      <Login
-        onLogin={handleLogin}
-        onShowSubscription={() => {
-          setSubscriptionPrefill({
-            name: '',
-            email: '',
-            propertyName: '',
-          })
-          setShowSubscription(true)
-        }}
-      />
+      <>
+        {emailVerificationBanner}
+        <Login
+          onLogin={handleLogin}
+          onShowSubscription={() => {
+            setSubscriptionPrefill({
+              name: '',
+              email: '',
+              propertyName: '',
+            })
+            setShowSubscription(true)
+          }}
+        />
+      </>
     )
   }
 
   return (
     <PendingWorkOrdersProvider value={pendingWorkOrdersContextValue}>
+      {emailVerificationBanner}
       <div className="min-h-screen bg-gray-100 flex">
         <Sidebar 
           isOpen={sidebarOpen} 
@@ -720,13 +980,13 @@ const pendingWorkOrdersContextValue = useMemo(
               onMenuToggle={toggleSidebar} 
               onNewPMAccount={handleNewPMAccount} 
               onLogout={handleLogout}
-              onNavigateToWorkOrder={handleNavigateToWorkOrder}
+              {...alertsNavProps}
             />
           )}
           {userProfile?.role === 'pm' && (
             <>
               <SubscriptionCancellationBanner cancelAt={cancelAt} />
-              {userProfile.email_verified === false && (
+              {userProfile.email_verified !== true && (
                 <EmailVerificationBanner 
                   email={userProfile.email} 
                   emailVerified={false}

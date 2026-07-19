@@ -1,12 +1,14 @@
 import { useState, useEffect, type FC } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList, Bell } from 'lucide-react';
+import { Search, ChevronDown, Clock, Sun, CheckCircle, AlertTriangle, Flame, Shield, UserPlus, Wrench, X, ExternalLink, ClipboardList } from 'lucide-react';
+import AlertsBell from './AlertsBell';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchWorkOrdersQuery } from '../lib/pmQueries';
 import { invalidateWorkOrdersData } from '../lib/invalidatePmData';
 import { APPROVAL_STATUS } from '../lib/approvalStatus';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface WorkOrder {
   id: string;
@@ -68,9 +70,18 @@ const extractStoragePath = (url: string): string | null => {
 export interface WorkOrdersProps {
   selectedWorkOrderId?: string | null;
   onClearSelectedWorkOrder: () => void;
+  onNavigateToWorkOrder?: (workOrderId: string) => void;
+  onNavigateToTechnicians?: () => void;
+  onNavigateToTenants?: () => void;
 }
 
-const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedWorkOrder }) => {
+const WorkOrders: FC<WorkOrdersProps> = ({
+  selectedWorkOrderId,
+  onClearSelectedWorkOrder,
+  onNavigateToWorkOrder,
+  onNavigateToTechnicians,
+  onNavigateToTenants,
+}) => {
   // Get user role from localStorage
   const getUserRole = () => {
     try {
@@ -105,7 +116,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
   });
 
   const errorWorkOrders = workOrdersQueryError
-    ? (workOrdersQueryError as Error).message || 'Failed to load work orders'
+    ? toUserFacingError(workOrdersQueryError, 'Unable to load work orders. Please try again.')
     : null;
 
   // State for search and filters
@@ -271,7 +282,7 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
       setMediaFiles(filesWithUrls.filter((file): file is WorkOrderMediaFile => file !== null));
     } catch (err: any) {
       console.error('Error fetching work order media:', err);
-      setMediaError(err.message || 'Failed to load work order media');
+      setMediaError(toUserFacingError(err, 'Unable to load work order media. Please try again.'));
       setMediaFiles([]);
     } finally {
       setLoadingMedia(false);
@@ -604,8 +615,6 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
     }
   };
 
-  const pendingCount = workOrders.filter((order) => order.status === 'Pending').length;
-
   return (
     <div className="p-6 w-full">
       <div className="relative overflow-hidden bg-white rounded-xl shadow-sm">
@@ -628,18 +637,12 @@ const WorkOrders: FC<WorkOrdersProps> = ({ selectedWorkOrderId, onClearSelectedW
             <h1 className="text-2xl font-bold text-gray-900">Work Orders</h1>
           </div>
 
-          {isPM && (
-            <div className="flex items-center space-x-2">
-              <div className="relative p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                <Bell className="w-5 h-5 text-gray-600" />
-                {pendingCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-teal-600 text-white text-[10px] font-semibold rounded-full">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-600">Alerts</span>
-            </div>
+          {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
+            <AlertsBell
+              onNavigateToWorkOrder={onNavigateToWorkOrder}
+              onNavigateToTechnicians={onNavigateToTechnicians}
+              onNavigateToTenants={onNavigateToTenants}
+            />
           )}
         </div>
 
