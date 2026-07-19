@@ -815,7 +815,6 @@ const pendingWorkOrdersContextValue = useMemo(
         return (
           <Dashboard
             onNavigateToTenant={handleNavigateToTenant}
-            onNavigateToWorkOrder={handleNavigateToWorkOrder}
             {...alertsNavProps}
           />
         )
@@ -849,7 +848,6 @@ const pendingWorkOrdersContextValue = useMemo(
         return (
           <Dashboard
             onNavigateToTenant={handleNavigateToTenant}
-            onNavigateToWorkOrder={handleNavigateToWorkOrder}
             {...alertsNavProps}
           />
         )

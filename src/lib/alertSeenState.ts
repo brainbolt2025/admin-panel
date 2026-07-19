@@ -64,7 +64,7 @@ export function markAlertsSeen(
 ): Set<string> {
   if (!propertyId) return new Set()
 
-  const currentKeys = new Set(collectAlertKeys(alerts))
+  const currentKeys = new Set<string>(collectAlertKeys(alerts))
   const next = readSeenAlertKeys(propertyId)
   for (const key of currentKeys) {
     next.add(key)
