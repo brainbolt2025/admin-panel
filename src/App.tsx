@@ -37,6 +37,7 @@ import {
   readPendingPmSignupCredentials,
   setPmSignupLoginHint,
 } from './lib/pendingPmSignup'
+import { isAdminPanelRole, markAdminPanelAccessDenied } from './lib/adminRoles'
 import { config } from './config'
 
 function isNewPmSignupPaymentReturn(): boolean {
@@ -349,6 +350,31 @@ function App() {
     queryClient.clear()
   }, [queryClient])
 
+  /** Allow only PM / super_admin into the admin UI; sign others out. */
+  const ensureAdminPanelAccess = useCallback(
+    async (userId: string): Promise<boolean> => {
+      try {
+        const profile = await loadUserProfile(userId)
+        if (isAdminPanelRole(profile?.role)) {
+          return true
+        }
+        markAdminPanelAccessDenied()
+        await supabase.auth.signOut()
+        clearStoredSession()
+        setIsLoggedIn(false)
+        return false
+      } catch (error) {
+        console.error('Failed to verify admin panel role:', error)
+        markAdminPanelAccessDenied()
+        await supabase.auth.signOut()
+        clearStoredSession()
+        setIsLoggedIn(false)
+        return false
+      }
+    },
+    [loadUserProfile, clearStoredSession]
+  )
+
   // Keep tokens in sync with Supabase session changes and refresh automatically
   useEffect(() => {
     const {
@@ -359,6 +385,13 @@ function App() {
       if (event === 'PASSWORD_RECOVERY') {
         setShowResetPassword(true)
         setIsCheckingAuth(false)
+        if (session) {
+          localStorage.setItem('access_token', session.access_token)
+          if (session.refresh_token) {
+            localStorage.setItem('refresh_token', session.refresh_token)
+          }
+        }
+        return
       }
 
       if (session) {
@@ -367,9 +400,8 @@ function App() {
           localStorage.setItem('refresh_token', session.refresh_token)
         }
         localStorage.setItem('user', JSON.stringify(session.user))
-        setIsLoggedIn(true)
-        loadUserProfile(session.user.id).catch((error) => {
-          console.error('Failed to load user profile after auth change:', error)
+        void ensureAdminPanelAccess(session.user.id).then((allowed) => {
+          if (allowed) setIsLoggedIn(true)
         })
       } else {
         clearStoredSession()
@@ -384,7 +416,7 @@ function App() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [loadUserProfile, clearStoredSession])
+  }, [ensureAdminPanelAccess, clearStoredSession])
 
   // Handle payment success redirect (must be after loadUserProfile is defined)
   useEffect(() => {
@@ -515,8 +547,12 @@ function App() {
         } = await supabase.auth.getSession()
 
         if (session) {
-          setIsLoggedIn(true)
-          await loadUserProfile(session.user.id)
+          if (isPasswordRecoveryLanding()) {
+            setShowResetPassword(true)
+          } else {
+            const allowed = await ensureAdminPanelAccess(session.user.id)
+            if (allowed) setIsLoggedIn(true)
+          }
         } else {
           // Fall back to legacy stored tokens if available
           const storedAccessToken = localStorage.getItem('access_token')
@@ -529,8 +565,12 @@ function App() {
             })
 
             if (!error && data.session) {
-              setIsLoggedIn(true)
-              await loadUserProfile(data.session.user.id)
+              if (isPasswordRecoveryLanding()) {
+                setShowResetPassword(true)
+              } else {
+                const allowed = await ensureAdminPanelAccess(data.session.user.id)
+                if (allowed) setIsLoggedIn(true)
+              }
               setIsCheckingAuth(false)
               return
             }
@@ -552,7 +592,7 @@ function App() {
     }
 
     initializeAuth()
-  }, [loadUserProfile, clearStoredSession])
+  }, [ensureAdminPanelAccess, clearStoredSession])
 
   // Set up real-time subscriptions for PM data
   useEffect(() => {
@@ -727,13 +767,11 @@ function App() {
   }
 
   const handleLogin = () => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       const session = data.session
-      if (session?.user?.id) {
-        loadUserProfile(session.user.id).catch((error) => {
-          console.error('Failed to load user profile after login:', error)
-        })
-      }
+      if (!session?.user?.id) return
+      const allowed = await ensureAdminPanelAccess(session.user.id)
+      if (allowed) setIsLoggedIn(true)
     })
   }
 

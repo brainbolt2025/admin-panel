@@ -3,6 +3,12 @@ import { User, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { config } from '../config';
 import { supabase } from '../lib/supabase';
 import { consumePmSignupLoginHint } from '../lib/pendingPmSignup';
+import {
+  ADMIN_PANEL_ACCESS_DENIED_MESSAGE,
+  consumeAdminPanelAccessDenied,
+  isAdminPanelRole,
+  markAdminPanelAccessDenied,
+} from '../lib/adminRoles';
 import AsineLogo from './AsineLogo';
 import logoFinal from '../assets/Logo-Final.png';
 
@@ -26,6 +32,10 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   
   useEffect(() => {
+    if (consumeAdminPanelAccessDenied()) {
+      setErrorMessage(ADMIN_PANEL_ACCESS_DENIED_MESSAGE);
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const paymentStatus = urlParams.get('payment');
     const sessionId = urlParams.get('session_id');
@@ -157,8 +167,33 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
         }
       }
 
-      // If we have a session, proceed with login regardless of any error
+      // If we have a session, only allow PM / super_admin into the admin panel
       if (session && user) {
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('Failed to load role after login:', profileError);
+          await supabase.auth.signOut();
+          setErrorMessage('Unable to verify your account role. Please try again.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!isAdminPanelRole(profile?.role)) {
+          markAdminPanelAccessDenied();
+          await supabase.auth.signOut();
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('user');
+          setErrorMessage(ADMIN_PANEL_ACCESS_DENIED_MESSAGE);
+          setIsSubmitting(false);
+          return;
+        }
+
         localStorage.setItem('access_token', session.access_token);
         if (session.refresh_token) {
           localStorage.setItem('refresh_token', session.refresh_token);
