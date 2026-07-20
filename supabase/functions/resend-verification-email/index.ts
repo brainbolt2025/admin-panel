@@ -153,33 +153,30 @@ serve(async (req) => {
     const name = user.name || (isTechnician ? 'Technician' : 'Tenant')
     const propertyName = user.property_name || 'your property'
 
-    // Step 2: Determine redirect URL (same logic/env vars as create-tenant / create-technician)
+    // Step 2: Tenant/technician → Android deep link; others (e.g. PM) → admin web
     let redirectTo: string
-    if (isTenant) {
-      const TENANT_APP_DEEP_LINK_SCHEME = Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') || Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-      const isTestMode = stripeSecretKey.startsWith('sk_test_')
-      const TENANT_APP_URL =
+    if (isTenant || isTechnician) {
+      const deepLinkScheme = (
+        Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') ||
+        Deno.env.get('APP_DEEP_LINK_SCHEME') ||
+        'asine://'
+      )
+      const normalizedScheme = deepLinkScheme.includes('://')
+        ? deepLinkScheme
+        : `${deepLinkScheme}://`
+      const envRedirect =
+        Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
         Deno.env.get('TENANT_APP_URL') ||
-        Deno.env.get('APP_URL') ||
-        Deno.env.get('SITE_URL') ||
-        Deno.env.get('BASE_URL') ||
-        (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
-
-      redirectTo = TENANT_APP_DEEP_LINK_SCHEME
-        ? `${TENANT_APP_DEEP_LINK_SCHEME}auth/verified`
-        : TENANT_APP_URL.replace(/\/$/, '')
+        Deno.env.get('TECHNICIAN_APP_URL') ||
+        ''
+      redirectTo = (
+        envRedirect.startsWith('asine://') ? envRedirect : `${normalizedScheme}auth/verified`
+      ).replace(/\/$/, '')
     } else {
-      const APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
       const APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
-
-      if (APP_DEEP_LINK_SCHEME) {
-        redirectTo = `${APP_DEEP_LINK_SCHEME}auth/verified`
-      } else if (APP_URL) {
-        redirectTo = `${APP_URL}/auth/verified`
-      } else {
-        redirectTo = 'https://www.sycnmore.com/auth/verified'
-      }
+      redirectTo = APP_URL
+        ? `${APP_URL.replace(/\/$/, '')}/auth/verified`
+        : 'https://www.sycnmore.com/auth/verified'
     }
 
     console.log('Generating verification link with redirect_to:', redirectTo)
