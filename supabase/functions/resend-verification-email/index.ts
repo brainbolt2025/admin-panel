@@ -11,6 +11,53 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
+/**
+ * Clickable https App Link for Android (email clients block asine://).
+ * https://www.sycnmore.com/auth/verified?token=…&confirmation_token=…&type=signup
+ */
+function mobileAuthVerifiedBase(): string {
+  const envRedirect = (
+    Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
+    Deno.env.get('SITE_URL') ||
+    'https://www.sycnmore.com'
+  ).replace(/\/$/, '')
+  if (envRedirect.startsWith('https://')) {
+    return envRedirect.endsWith('/auth/verified')
+      ? envRedirect
+      : `${envRedirect}/auth/verified`
+  }
+  return 'https://www.sycnmore.com/auth/verified'
+}
+
+function extractActionLink(linkData: Record<string, unknown>): string | null {
+  const props = (linkData.properties || {}) as Record<string, unknown>
+  const link = linkData.action_link || props.action_link || props.actionLink
+  return typeof link === 'string' && link.length > 0 ? link : null
+}
+
+function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string | null {
+  const props = (linkData.properties || {}) as Record<string, unknown>
+  const actionLink = extractActionLink(linkData)
+  let token =
+    (typeof linkData.hashed_token === 'string' && linkData.hashed_token) ||
+    (typeof props.hashed_token === 'string' && props.hashed_token) ||
+    null
+  if (!token && actionLink) {
+    try {
+      token = new URL(actionLink).searchParams.get('token')
+    } catch {
+      // ignore
+    }
+  }
+  if (!token) return null
+  const params = new URLSearchParams({
+    token,
+    confirmation_token: token,
+    type: 'signup',
+  })
+  return `${mobileAuthVerifiedBase()}?${params.toString()}`
+}
+
 // TypeScript interface for the request body
 interface ResendVerificationRequest {
   email: string
@@ -153,31 +200,15 @@ serve(async (req) => {
     const name = user.name || (isTechnician ? 'Technician' : 'Tenant')
     const propertyName = user.property_name || 'your property'
 
-    // Step 2: Tenant/technician → Android deep link; others (e.g. PM) → admin web
-    let redirectTo: string
-    if (isTenant || isTechnician) {
-      const deepLinkScheme = (
-        Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') ||
-        Deno.env.get('APP_DEEP_LINK_SCHEME') ||
-        'asine://'
-      )
-      const normalizedScheme = deepLinkScheme.includes('://')
-        ? deepLinkScheme
-        : `${deepLinkScheme}://`
-      const envRedirect =
-        Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
-        Deno.env.get('TENANT_APP_URL') ||
-        Deno.env.get('TECHNICIAN_APP_URL') ||
-        ''
-      redirectTo = (
-        envRedirect.startsWith('asine://') ? envRedirect : `${normalizedScheme}auth/verified`
-      ).replace(/\/$/, '')
-    } else {
-      const APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
-      redirectTo = APP_URL
-        ? `${APP_URL.replace(/\/$/, '')}/auth/verified`
-        : 'https://www.sycnmore.com/auth/verified'
-    }
+    // Step 2: Tenant/technician → token_hash deep link; others → admin web action_link
+    const redirectTo = (isTenant || isTechnician)
+      ? mobileAuthVerifiedBase()
+      : (
+          Deno.env.get('APP_URL') ||
+          Deno.env.get('SITE_URL') ||
+          Deno.env.get('BASE_URL') ||
+          'https://www.sycnmore.com'
+        ).replace(/\/$/, '') + '/auth/verified'
 
     console.log('Generating verification link with redirect_to:', redirectTo)
 
@@ -211,12 +242,14 @@ serve(async (req) => {
     }
 
     const linkData = await generateLinkResponse.json()
-    const verifyLink = linkData.action_link || linkData.properties?.action_link || linkData.properties?.actionLink
+    const verifyLink = (isTenant || isTechnician)
+      ? (buildMobileSignupVerifyLink(linkData) || extractActionLink(linkData))
+      : extractActionLink(linkData)
 
     if (!verifyLink) {
-      console.error('No action_link found in generated link data:', JSON.stringify(linkData, null, 2))
+      console.error('No hashed_token/action_link in generate_link response:', JSON.stringify(linkData, null, 2))
       return new Response(
-        JSON.stringify({ error: 'Verification link generated but no action link found in response' }),
+        JSON.stringify({ error: 'Verification link generated but no token found in response' }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -224,7 +257,11 @@ serve(async (req) => {
       )
     }
 
-    console.log('Found action_link:', verifyLink.substring(0, 100) + '...')
+    console.log('Verification link configured:', {
+      linkPreview: verifyLink.substring(0, 100) + '...',
+      hasQueryToken: verifyLink.includes('token='),
+      role,
+    })
 
     // Step 4: Send the same branded email via Mailgun as the original signup email
     const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
