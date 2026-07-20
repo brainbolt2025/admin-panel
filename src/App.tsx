@@ -547,7 +547,7 @@ function App() {
         } = await supabase.auth.getSession()
 
         if (session) {
-          if (isPasswordRecoveryLanding()) {
+          if (isPasswordRecoveryLanding) {
             setShowResetPassword(true)
           } else {
             const allowed = await ensureAdminPanelAccess(session.user.id)
@@ -565,7 +565,7 @@ function App() {
             })
 
             if (!error && data.session) {
-              if (isPasswordRecoveryLanding()) {
+              if (isPasswordRecoveryLanding) {
                 setShowResetPassword(true)
               } else {
                 const allowed = await ensureAdminPanelAccess(data.session.user.id)
