@@ -440,18 +440,22 @@ serve(async (req) => {
     let emailError: string | null = null
     
     try {
-      // Prefer env URLs. Staging (sk_test_) can use localhost; live defaults to prod site.
-      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-      const isTestMode = stripeSecretKey.startsWith('sk_test_')
-      const TENANT_APP_URL =
-        Deno.env.get('TENANT_APP_URL') ||
-        Deno.env.get('APP_URL') ||
-        Deno.env.get('SITE_URL') ||
-        Deno.env.get('BASE_URL') ||
-        (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
+      // Mobile app deep link after Supabase Auth verifies the signup email.
+      const deepLinkScheme = (
+        Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') ||
+        Deno.env.get('APP_DEEP_LINK_SCHEME') ||
+        'asine://'
+      )
+      const normalizedScheme = deepLinkScheme.includes('://')
+        ? deepLinkScheme
+        : `${deepLinkScheme}://`
+      const envRedirect =
+        Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') || Deno.env.get('TENANT_APP_URL') || ''
+      // Prefer explicit deep-link overrides; ignore https TENANT_APP_URL (used for WO links).
+      const redirectTo = (
+        envRedirect.startsWith('asine://') ? envRedirect : `${normalizedScheme}auth/verified`
+      ).replace(/\/$/, '')
 
-      const redirectTo = TENANT_APP_URL.replace(/\/$/, '')
-      
       console.log('Generating verification link with redirect_to:', redirectTo)
       
       // Use Supabase Admin API to generate a confirmation link

@@ -418,24 +418,24 @@ serve(async (req) => {
     let emailError: string | null = null
     
     try {
-      // Determine redirect URL based on environment
-      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
-      const isTestMode = stripeSecretKey.startsWith('sk_test_')
-      
-      // Get deep link configuration
-      let APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-      let APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
-      
-      // Determine redirect URL
-      let redirectTo: string
-      if (APP_DEEP_LINK_SCHEME) {
-        redirectTo = `${APP_DEEP_LINK_SCHEME}auth/verified`
-      } else if (APP_URL) {
-        redirectTo = `${APP_URL}/auth/verified`
-      } else {
-        redirectTo = 'https://www.sycnmore.com/auth/verified'
-      }
-      
+      // Mobile app deep link after Supabase Auth verifies the signup email.
+      const deepLinkScheme = (
+        Deno.env.get('APP_DEEP_LINK_SCHEME') ||
+        Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') ||
+        'asine://'
+      )
+      const normalizedScheme = deepLinkScheme.includes('://')
+        ? deepLinkScheme
+        : `${deepLinkScheme}://`
+      const envRedirect =
+        Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
+        Deno.env.get('TECHNICIAN_APP_URL') ||
+        Deno.env.get('TENANT_APP_URL') ||
+        ''
+      const redirectTo = (
+        envRedirect.startsWith('asine://') ? envRedirect : `${normalizedScheme}auth/verified`
+      ).replace(/\/$/, '')
+
       console.log('Generating verification link with redirect_to:', redirectTo)
       
       // Use Supabase Admin API to generate a confirmation link (same as tenants)
