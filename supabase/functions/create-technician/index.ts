@@ -11,6 +11,53 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 }
 
+/**
+ * Clickable https App Link for Android (email clients block asine://).
+ * https://www.sycnmore.com/auth/verified?token=…&confirmation_token=…&type=signup
+ */
+function mobileAuthVerifiedBase(): string {
+  const envRedirect = (
+    Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
+    Deno.env.get('SITE_URL') ||
+    'https://www.sycnmore.com'
+  ).replace(/\/$/, '')
+  if (envRedirect.startsWith('https://')) {
+    return envRedirect.endsWith('/auth/verified')
+      ? envRedirect
+      : `${envRedirect}/auth/verified`
+  }
+  return 'https://www.sycnmore.com/auth/verified'
+}
+
+function extractActionLink(linkData: Record<string, unknown>): string | null {
+  const props = (linkData.properties || {}) as Record<string, unknown>
+  const link = linkData.action_link || props.action_link || props.actionLink
+  return typeof link === 'string' && link.length > 0 ? link : null
+}
+
+function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string | null {
+  const props = (linkData.properties || {}) as Record<string, unknown>
+  const actionLink = extractActionLink(linkData)
+  let token =
+    (typeof linkData.hashed_token === 'string' && linkData.hashed_token) ||
+    (typeof props.hashed_token === 'string' && props.hashed_token) ||
+    null
+  if (!token && actionLink) {
+    try {
+      token = new URL(actionLink).searchParams.get('token')
+    } catch {
+      // ignore
+    }
+  }
+  if (!token) return null
+  const params = new URLSearchParams({
+    token,
+    confirmation_token: token,
+    type: 'signup',
+  })
+  return `${mobileAuthVerifiedBase()}?${params.toString()}`
+}
+
 // TypeScript interface for the request body
 interface CreateTechnicianRequest {
   email: string
@@ -418,26 +465,10 @@ serve(async (req) => {
     let emailError: string | null = null
     
     try {
-      // Mobile app deep link after Supabase Auth verifies the signup email.
-      const deepLinkScheme = (
-        Deno.env.get('APP_DEEP_LINK_SCHEME') ||
-        Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') ||
-        'asine://'
-      )
-      const normalizedScheme = deepLinkScheme.includes('://')
-        ? deepLinkScheme
-        : `${deepLinkScheme}://`
-      const envRedirect =
-        Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
-        Deno.env.get('TECHNICIAN_APP_URL') ||
-        Deno.env.get('TENANT_APP_URL') ||
-        ''
-      const redirectTo = (
-        envRedirect.startsWith('asine://') ? envRedirect : `${normalizedScheme}auth/verified`
-      ).replace(/\/$/, '')
+      const redirectTo = mobileAuthVerifiedBase()
 
       console.log('Generating verification link with redirect_to:', redirectTo)
-      
+
       // Use Supabase Admin API to generate a confirmation link (same as tenants)
       const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
         method: 'POST',
@@ -459,22 +490,19 @@ serve(async (req) => {
         emailError = errorData.error_description || errorData.message || 'Failed to generate verification link'
       } else {
         const linkData = await generateLinkResponse.json()
-        const actionLink = linkData.action_link || linkData.properties?.action_link || linkData.properties?.actionLink
-        
-        if (!actionLink) {
-          console.error('No action_link found in generated link data:', JSON.stringify(linkData, null, 2))
-          emailError = 'Verification link generated but no action link found in response'
+        const verifyLink =
+          buildMobileSignupVerifyLink(linkData) || extractActionLink(linkData)
+
+        if (!verifyLink) {
+          console.error('No hashed_token/action_link in generate_link response:', JSON.stringify(linkData, null, 2))
+          emailError = 'Verification link generated but no token found in response'
         } else {
-          console.log('Found action_link:', actionLink.substring(0, 100) + '...')
-          
-          // Use Supabase's action_link directly (same as tenants)
-          const verifyLink = actionLink
-          
           console.log('Verification link configured:', {
-            actionLink: actionLink.substring(0, 150) + '...',
-            note: 'Using Supabase action_link directly for email verification'
+            linkPreview: verifyLink.substring(0, 150) + '...',
+            hasQueryToken: verifyLink.includes('token='),
+            redirectTo,
           })
-          
+
           // Send email using Mailgun (same approach as tenants)
           const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
           const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
