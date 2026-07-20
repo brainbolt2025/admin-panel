@@ -440,14 +440,15 @@ serve(async (req) => {
     let emailError: string | null = null
     
     try {
-      // Temporary: send verification redirects to local admin panel for testing.
-      // Override with TENANT_APP_URL / SITE_URL when ready for mobile/prod again.
+      // Prefer env URLs. Staging (sk_test_) can use localhost; live defaults to prod site.
+      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+      const isTestMode = stripeSecretKey.startsWith('sk_test_')
       const TENANT_APP_URL =
         Deno.env.get('TENANT_APP_URL') ||
         Deno.env.get('APP_URL') ||
         Deno.env.get('SITE_URL') ||
         Deno.env.get('BASE_URL') ||
-        'http://localhost:5173'
+        (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
 
       const redirectTo = TENANT_APP_URL.replace(/\/$/, '')
       

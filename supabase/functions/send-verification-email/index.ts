@@ -93,20 +93,15 @@
       
       // Get deep link configuration (prioritize this for mobile app compatibility)
       let APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-      let APP_URL = Deno.env.get('APP_URL') || ''
+      let APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
       let BASE_URL = Deno.env.get('BASE_URL') || ''
       let DEV_APP_PORT = Deno.env.get('DEV_APP_PORT') || ''
       
       console.log('APP_DEEP_LINK_SCHEME:', APP_DEEP_LINK_SCHEME || 'NOT SET')
       console.log('APP_URL:', APP_URL || 'NOT SET')
       console.log('BASE_URL:', BASE_URL || 'NOT SET')
+      console.log('SITE_URL:', Deno.env.get('SITE_URL') || 'NOT SET')
       console.log('DEV_APP_PORT:', DEV_APP_PORT || 'NOT SET (will use default 8081)')
-      
-      // Use BASE_URL as fallback if APP_URL not set
-      if (!APP_URL && BASE_URL) {
-        APP_URL = BASE_URL
-        console.log('Using BASE_URL as APP_URL:', APP_URL)
-      }
       
       let verifyLink: string
       let linkFormat: string
@@ -129,7 +124,7 @@
         console.log('✅ Using WEB URL format (from APP_URL configuration)')
       } else {
         // Final fallback - web URL
-        verifyLink = `https://admin.asine.app/verify?token=${token}`
+        verifyLink = `https://www.sycnmore.com/verify?token=${token}`
         linkFormat = 'WEB_URL_FALLBACK'
         console.log('⚠️ Using WEB URL format (FALLBACK)')
       }
@@ -428,7 +423,7 @@
     Link format priority (uses web URL format - same as work order emails):
     - In test mode (auto): uses http://localhost:8081/verify?token=xxx ✅ WORKS WITH APP
     - If APP_URL is set: uses configured URL/verify?token=xxx
-    - Fallback: uses https://admin.asine.app/verify?token=xxx
+    - Fallback: uses https://www.sycnmore.com/verify?token=xxx
     
     Note: Deep links (asine://) are NOT used because web URLs work better with Android App Links
 
@@ -520,7 +515,7 @@
   =====================
   - MAILGUN_DOMAIN: Your verified Mailgun domain (e.g., mg.asine.app)
   - MAILGUN_API_KEY: Your Mailgun API key (starts with "key-")
-  - APP_URL: App URL for verification links (e.g., http://localhost:8081 in test, https://admin.asine.app in prod)
+  - APP_URL / SITE_URL: App URL for verification links (e.g., http://localhost:8081 in test, https://www.sycnmore.com in prod)
   - DEV_APP_PORT: Port for localhost URL in test mode (default: 8081)
 
   SECURITY NOTES:

@@ -152,7 +152,7 @@ serve(async (req) => {
     }
 
     // Determine the site URL based on environment
-    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
 
     // Helper: create a Stripe Checkout session that collects a payment method
     // and (re)starts the subscription. Used whenever we can't charge the

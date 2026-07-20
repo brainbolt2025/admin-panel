@@ -580,8 +580,8 @@ DEPLOYMENT INSTRUCTIONS:
    - MAILGUN_API_KEY (for verification emails)
    - BASE_URL (optional - for verification links. Auto-detected from Stripe mode if not set)
      * Test mode (sk_test_): defaults to http://localhost:5173
-     * Live mode (sk_live_): defaults to https://admin.asine.app
-     * Override by setting BASE_URL secret (e.g., http://localhost:3000 for custom port)
+     * Live mode (sk_live_): defaults to https://www.sycnmore.com
+     * Override by setting BASE_URL / SITE_URL / APP_URL secret
 
 2. Deploy the function WITHOUT JWT verification:
    supabase functions deploy stripe-webhook --no-verify-jwt
@@ -640,9 +640,9 @@ After a successful checkout.session.completed event:
 3. Verification email is automatically sent via send-verification-email function
 4. Email contains a link: ${BASE_URL}/verify?token=${token}
    - BASE_URL is dynamically determined:
-     * If BASE_URL secret is set: uses that value
+     * If BASE_URL / SITE_URL / APP_URL secret is set: uses that value
      * If in Stripe test mode (sk_test_): uses http://localhost:5173
-     * If in Stripe live mode (sk_live_): uses https://admin.asine.app
+     * If in Stripe live mode (sk_live_): uses https://www.sycnmore.com
 5. User clicks link to verify their email address
 
 Note: If you want to store verification tokens in the database, uncomment the 
@@ -654,7 +654,7 @@ SWITCHING TO LIVE MODE:
 1. Update STRIPE_SECRET_KEY in Supabase Secrets: sk_test_... → sk_live_...
 2. Create a new webhook endpoint in Stripe (Live mode)
 3. Update STRIPE_WEBHOOK_SECRET with the new webhook signing secret
-4. Update BASE_URL to production URL: https://admin.asine.app
+4. Update SITE_URL / APP_URL / BASE_URL to production URL: https://www.sycnmore.com
 5. Redeploy the function with production settings
 
 SAFETY:

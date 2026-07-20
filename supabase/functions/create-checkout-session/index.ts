@@ -77,7 +77,7 @@ serve(async (req) => {
 
     // Determine the site URL based on environment
     // In test mode, use localhost for local development, otherwise use production
-    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
     console.log('Using site URL:', siteUrl)
 
     // Create a Stripe Checkout Session for subscription
@@ -159,7 +159,7 @@ DEPLOYMENT INSTRUCTIONS:
 1. Set the Stripe secret key as a Supabase secret:
    supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx
 
-2. Set the site URL (optional, defaults to https://admin.asine.app):
+2. Set the site URL (optional, defaults to https://www.sycnmore.com in live mode):
    supabase secrets set SITE_URL=https://your-domain.com
 
 3. Deploy the function:

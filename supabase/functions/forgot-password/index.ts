@@ -103,7 +103,7 @@ serve(async (req) => {
     } else {
       // PM/Technician/Admin settings
       APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
-      APP_URL = Deno.env.get('APP_URL') || Deno.env.get('BASE_URL') || ''
+      APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
     }
 
     // Determine redirect URL
@@ -118,7 +118,7 @@ serve(async (req) => {
     } else {
       // Fallback: always use public web URL (never localhost)
       // For mobile apps, configure APP_DEEP_LINK_SCHEME or APP_URL
-      redirectTo = 'https://admin.asine.app/auth/reset-password'
+      redirectTo = 'https://www.sycnmore.com/auth/reset-password'
     }
 
     console.log('Generating password reset link with redirect_to:', redirectTo)
@@ -218,7 +218,7 @@ serve(async (req) => {
       // PASSWORD_RESET_WEB_URL lets you override the base (e.g. http://localhost:5173
       // for local testing) without touching the shared APP_URL used elsewhere.
       const webBase = (
-        Deno.env.get('PASSWORD_RESET_WEB_URL') || APP_URL || 'https://admin.asine.app'
+        Deno.env.get('PASSWORD_RESET_WEB_URL') || APP_URL || 'https://www.sycnmore.com'
       ).replace(/\/$/, '')
       emailLink = `${webBase}/reset-password?token_hash=${hashedToken}&type=recovery`
     }

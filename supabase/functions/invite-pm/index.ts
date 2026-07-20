@@ -107,9 +107,8 @@ serve(async (req) => {
       )
     }
 
-    const siteUrl = Deno.env.get('SITE_URL') ?? 'https://admin.asine.app'
-    const isLocal = siteUrl.includes('localhost')
-    const subscribeBaseUrl = isLocal ? 'http://localhost:5173' : 'https://admin.asine.app'
+    // SITE_URL on staging can be http://localhost:5173; prod defaults to live site.
+    const subscribeBaseUrl = (Deno.env.get('SITE_URL') ?? 'https://www.sycnmore.com').replace(/\/$/, '')
     const subscribeLink = name 
       ? `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`
       : `${subscribeBaseUrl}/subscribe?email=${encodeURIComponent(email)}`
