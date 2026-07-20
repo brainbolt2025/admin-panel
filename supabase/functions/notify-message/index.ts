@@ -275,7 +275,7 @@ serve(async (req) => {
     const isTestMode = stripeSecretKey.startsWith('sk_test_')
     
     // Get app URL configuration
-    const APP_URL = Deno.env.get('APP_URL') || Deno.env.get('BASE_URL') || ''
+    const APP_URL = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || Deno.env.get('BASE_URL') || ''
     const APP_DEEP_LINK_SCHEME = Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
     
     // Construct link to conversation using work_order_id (more reliable than conversation_id)
@@ -287,7 +287,7 @@ serve(async (req) => {
     } else if (APP_URL) {
       conversationLink = `${APP_URL}/chat?work_order=${conversation.work_order_id}`
     } else {
-      conversationLink = `https://admin.asine.app/chat?work_order=${conversation.work_order_id}`
+      conversationLink = `https://www.sycnmore.com/chat?work_order=${conversation.work_order_id}`
     }
 
     // Prepare email content

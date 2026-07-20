@@ -157,12 +157,14 @@ serve(async (req) => {
     let redirectTo: string
     if (isTenant) {
       const TENANT_APP_DEEP_LINK_SCHEME = Deno.env.get('TENANT_APP_DEEP_LINK_SCHEME') || Deno.env.get('APP_DEEP_LINK_SCHEME') || ''
+      const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+      const isTestMode = stripeSecretKey.startsWith('sk_test_')
       const TENANT_APP_URL =
         Deno.env.get('TENANT_APP_URL') ||
         Deno.env.get('APP_URL') ||
         Deno.env.get('SITE_URL') ||
         Deno.env.get('BASE_URL') ||
-        'http://localhost:5173'
+        (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
 
       redirectTo = TENANT_APP_DEEP_LINK_SCHEME
         ? `${TENANT_APP_DEEP_LINK_SCHEME}auth/verified`
@@ -176,7 +178,7 @@ serve(async (req) => {
       } else if (APP_URL) {
         redirectTo = `${APP_URL}/auth/verified`
       } else {
-        redirectTo = 'https://admin.asine.app/auth/verified'
+        redirectTo = 'https://www.sycnmore.com/auth/verified'
       }
     }
 

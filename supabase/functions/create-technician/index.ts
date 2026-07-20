@@ -433,7 +433,7 @@ serve(async (req) => {
       } else if (APP_URL) {
         redirectTo = `${APP_URL}/auth/verified`
       } else {
-        redirectTo = 'https://admin.asine.app/auth/verified'
+        redirectTo = 'https://www.sycnmore.com/auth/verified'
       }
       
       console.log('Generating verification link with redirect_to:', redirectTo)

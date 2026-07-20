@@ -92,7 +92,7 @@ serve(async (req) => {
 
     // Determine the site URL based on environment
     // In test mode, use localhost for local development, otherwise use production
-    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://admin.asine.app')
+    const siteUrl = Deno.env.get('SITE_URL') || (isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com')
     console.log('Using site URL:', siteUrl)
 
     // Create a Stripe Checkout Session for subscription
