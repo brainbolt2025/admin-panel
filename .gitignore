@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Local DB dumps (may contain prod data)
+prod-schema.sql
+prod-data.sql
+prod-data-inserts.sql
+asine-dev-apply.sql
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

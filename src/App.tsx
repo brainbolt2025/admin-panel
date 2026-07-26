@@ -21,9 +21,9 @@ import { getAuthenticatedSupabase, supabase, isPasswordRecoveryLanding } from '.
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 import { queryKeys } from './lib/queryKeys'
 import {
-  fetchPendingWorkOrdersCount,
-  fetchPendingTechniciansCount,
-  fetchPendingTenantsCount,
+  fetchPendingWorkOrderIds,
+  fetchPendingTechnicianIds,
+  fetchPendingTenantIds,
 } from './lib/pmQueries'
 import {
   invalidateTechniciansData,
@@ -39,6 +39,8 @@ import {
 } from './lib/pendingPmSignup'
 import { isAdminPanelRole, markAdminPanelAccessDenied } from './lib/adminRoles'
 import { config } from './config'
+
+const EMPTY_IDS: string[] = []
 
 function isNewPmSignupPaymentReturn(): boolean {
   const params = new URLSearchParams(window.location.search)
@@ -139,23 +141,31 @@ function App() {
   const isPmUser = userProfile?.role === 'pm'
   const propertyId = userProfile?.property_id ?? null
 
-  const { data: pendingWorkOrdersCount = 0 } = useQuery({
+  const { data: pendingWorkOrderIdsData } = useQuery({
     queryKey: queryKeys.pendingWorkOrders(propertyId),
-    queryFn: () => fetchPendingWorkOrdersCount(propertyId),
+    queryFn: () => fetchPendingWorkOrderIds(propertyId),
     enabled: isPmUser && !!propertyId,
   })
 
-  const { data: pendingTechniciansCount = 0 } = useQuery({
+  const { data: pendingTechnicianIdsData } = useQuery({
     queryKey: queryKeys.pendingTechnicians(propertyId),
-    queryFn: () => fetchPendingTechniciansCount(propertyId),
+    queryFn: () => fetchPendingTechnicianIds(propertyId),
     enabled: isPmUser && !!propertyId,
   })
 
-  const { data: pendingTenantsCount = 0 } = useQuery({
+  const { data: pendingTenantIdsData } = useQuery({
     queryKey: queryKeys.pendingTenants(propertyId),
-    queryFn: () => fetchPendingTenantsCount(propertyId),
+    queryFn: () => fetchPendingTenantIds(propertyId),
     enabled: isPmUser && !!propertyId,
   })
+
+  const pendingWorkOrderIds = pendingWorkOrderIdsData ?? EMPTY_IDS
+  const pendingTechnicianIds = pendingTechnicianIdsData ?? EMPTY_IDS
+  const pendingTenantIds = pendingTenantIdsData ?? EMPTY_IDS
+
+  const pendingWorkOrdersCount = pendingWorkOrderIds.length
+  const pendingTechniciansCount = pendingTechnicianIds.length
+  const pendingTenantsCount = pendingTenantIds.length
 
   const refreshPendingCount = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.pendingWorkOrders(propertyId) })
@@ -170,11 +180,11 @@ function App() {
   }, [queryClient, propertyId])
 
   const { hasUnseenPending: hasUnseenWorkOrders, acknowledge: acknowledgeWorkOrders } =
-    usePendingAcknowledgment('work_orders', propertyId, pendingWorkOrdersCount)
+    usePendingAcknowledgment('work_orders', propertyId, pendingWorkOrderIds)
   const { hasUnseenPending: hasUnseenTechnicians, acknowledge: acknowledgeTechnicians } =
-    usePendingAcknowledgment('technicians', propertyId, pendingTechniciansCount)
+    usePendingAcknowledgment('technicians', propertyId, pendingTechnicianIds)
   const { hasUnseenPending: hasUnseenTenants, acknowledge: acknowledgeTenants } =
-    usePendingAcknowledgment('tenants', propertyId, pendingTenantsCount)
+    usePendingAcknowledgment('tenants', propertyId, pendingTenantIds)
 
 
   const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
@@ -594,160 +604,150 @@ function App() {
     initializeAuth()
   }, [ensureAdminPanelAccess, clearStoredSession])
 
-  // Set up real-time subscriptions for PM data
+  // Realtime-only subscriptions for PM sidebar badges and lists (no polling).
   useEffect(() => {
     if (!userProfile || userProfile.role !== 'pm' || !userProfile.property_id) {
       return
     }
 
-    // Poll every 30 seconds to check for updates
-    // COMMENTED OUT FOR TESTING REAL-TIME SUBSCRIPTIONS
-    // const pollInterval = setInterval(() => {
-    //   fetchPendingWorkOrdersCount()
-    //   fetchPendingTechniciansCount()
-    //   // Also refresh the work orders list if available
-    //   if (refreshWorkOrdersList) {
-    //     refreshWorkOrdersList().catch((error) => {
-    //       console.error('Error refreshing work orders list:', error)
-    //     })
-    //   }
-    // }, 30000) // 30 seconds
-
-    // Set up real-time subscriptions
+    const propertyId = userProfile.property_id
+    const pmUserId = userProfile.id
     const supabaseClient = getAuthenticatedSupabase()
 
-    // Try to subscribe to work_orders table changes (if real-time is enabled)
+    const roleOf = (record: { role?: string } | null | undefined) => record?.role ?? null
+
     const workOrdersChannel = supabaseClient
-      .channel('pending_work_orders_changes')
+      .channel(`pm_work_orders_${propertyId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'work_orders',
-          filter: `property_id=eq.${userProfile.property_id}`,
+          filter: `property_id=eq.${propertyId}`,
         },
         (payload) => {
-          console.log('Work order changed, refreshing cache:', payload.eventType)
+          console.log('Work order realtime:', payload.eventType)
           invalidateWorkOrdersData(queryClient)
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription active for work orders')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.log('Real-time not available, using polling only')
+          console.log('Realtime active: work orders')
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime unavailable for work orders:', status)
         }
       })
 
-    // Try to subscribe to users table changes (if real-time is enabled)
-    const techniciansChannel = supabaseClient
-      .channel('pending_technicians_changes')
+    // Any users row change for this property refreshes tenant + technician pending badges.
+    const propertyUsersChannel = supabaseClient
+      .channel(`pm_property_users_${propertyId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'users',
-          filter: `property_id=eq.${userProfile.property_id}`,
+          filter: `property_id=eq.${propertyId}`,
         },
         (payload) => {
-          const newRecord = payload.new as any
-          const oldRecord = payload.old as any
-          
-          const isTechnicianChange =
-            (newRecord?.role === 'technician' || oldRecord?.role === 'technician') ||
-            (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
+          const newRole = roleOf(payload.new as { role?: string })
+          const oldRole = roleOf(payload.old as { role?: string })
+          const isTenant =
+            newRole === 'tenant' ||
+            oldRole === 'tenant' ||
+            // INSERT payloads sometimes omit role in filters; still refresh pending tenants
+            payload.eventType === 'INSERT'
+          const isTechnician = newRole === 'technician' || oldRole === 'technician'
 
-          const isTenantChange =
-            (newRecord?.role === 'tenant' || oldRecord?.role === 'tenant') ||
-            (newRecord?.approved !== undefined || oldRecord?.approved !== undefined)
+          console.log('Property users realtime:', {
+            event: payload.eventType,
+            newRole,
+            oldRole,
+          })
 
-          if (isTechnicianChange) {
-            console.log('Technician changed, refreshing cache:', payload.eventType)
+          if (isTenant) {
+            invalidateTenantsData(queryClient)
+          }
+          if (isTechnician) {
             invalidateTechniciansData(queryClient)
           }
-
-          if (isTenantChange) {
-            console.log('Tenant changed, refreshing cache:', payload.eventType)
+          // Approval changes on either role
+          if (!isTenant && !isTechnician) {
             invalidateTenantsData(queryClient)
+            invalidateTechniciansData(queryClient)
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription active for technicians and tenants')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.log('Real-time not available, using polling only')
+          console.log('Realtime active: property users (tenants/technicians)')
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime unavailable for property users:', status)
         }
       })
 
-    // Subscribe to current user's changes (cancel_at, subscription_status, email_verified)
     const userUpdatesChannel = supabaseClient
-      .channel('user_updates_changes')
+      .channel(`pm_self_${pmUserId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'users',
-          filter: `id=eq.${userProfile.id}`,
+          filter: `id=eq.${pmUserId}`,
         },
         (payload) => {
-          const newRecord = payload.new as any
-          
-          // Update cancel_at if changed
+          const newRecord = payload.new as {
+            cancel_at?: string | null
+            email_verified?: boolean | null
+            subscribed?: boolean | null
+            subscription_status?: string | null
+          }
+
           if (newRecord?.cancel_at !== undefined) {
-            console.log('User cancellation status changed, updating cancel_at')
             setCancelAt(newRecord.cancel_at || null)
           }
-          
-          // Update email_verified if changed (triggers re-render of banner)
+
           if (newRecord?.email_verified !== undefined) {
-            console.log('User email verification status changed, updating userProfile')
-            setUserProfile((prev) => prev ? { ...prev, email_verified: newRecord.email_verified } : null)
+            setUserProfile((prev) =>
+              prev ? { ...prev, email_verified: newRecord.email_verified } : null
+            )
           }
-          
-          // Check if subscription is cancelled or expired - show renewal page if needed
-          if (userProfile?.role === 'pm') {
-            const hasActiveSubscription = newRecord?.subscribed === true && newRecord?.subscription_status === 'active'
-            const isCancelled = newRecord?.subscription_status === 'canceled'
-            const hasCancelDate = newRecord?.cancel_at !== null
-            
-            if (isCancelled && !hasActiveSubscription) {
-              if (hasCancelDate) {
-                // Check if cancel_at date has passed
-                const cancelDate = new Date(newRecord.cancel_at)
-                const now = new Date()
-                if (now >= cancelDate) {
-                  setShowRenewSubscription(true)
-                }
-              } else {
-                // No cancel_at date means subscription was cancelled immediately or manually deleted
+
+          const hasActiveSubscription =
+            newRecord?.subscribed === true && newRecord?.subscription_status === 'active'
+          const isCancelled = newRecord?.subscription_status === 'canceled'
+          const hasCancelDate = newRecord?.cancel_at != null
+
+          if (isCancelled && !hasActiveSubscription) {
+            if (hasCancelDate) {
+              const cancelDate = new Date(newRecord.cancel_at as string)
+              if (new Date() >= cancelDate) {
                 setShowRenewSubscription(true)
               }
-            } else if (hasActiveSubscription || newRecord?.subscription_status === 'active') {
-              setShowRenewSubscription(false)
+            } else {
+              setShowRenewSubscription(true)
             }
+          } else if (hasActiveSubscription || newRecord?.subscription_status === 'active') {
+            setShowRenewSubscription(false)
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription active for user updates')
-        } else if (status === 'CHANNEL_ERROR') {
-          console.log('Real-time not available for user updates')
+          console.log('Realtime active: PM profile updates')
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime unavailable for PM profile:', status)
         }
       })
 
-    // Cleanup on unmount or when dependencies change
     return () => {
-      // clearInterval(pollInterval) // COMMENTED OUT - polling disabled for testing
       supabaseClient.removeChannel(workOrdersChannel)
-      supabaseClient.removeChannel(techniciansChannel)
+      supabaseClient.removeChannel(propertyUsersChannel)
       supabaseClient.removeChannel(userUpdatesChannel)
     }
-  }, [userProfile, queryClient])
+  }, [userProfile?.id, userProfile?.role, userProfile?.property_id, queryClient])
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen)
@@ -1008,6 +1008,7 @@ const pendingWorkOrdersContextValue = useMemo(
           onToggle={toggleSidebar} 
           activeItem={activeItem}
           onActiveItemChange={setActiveItem}
+          isPM={isPmUser}
         />
         
         <div className="flex-1 flex flex-col lg:ml-64">

@@ -5,9 +5,9 @@ export const queryKeys = {
   currentUserName: ['currentUser', 'name'] as const,
   adminStats: ['adminStats'] as const,
   pendingWorkOrders: (propertyId: string | null | undefined) =>
-    ['pendingCounts', 'workOrders', propertyId ?? 'none'] as const,
+    ['pendingIds', 'workOrders', propertyId ?? 'none'] as const,
   pendingTechnicians: (propertyId: string | null | undefined) =>
-    ['pendingCounts', 'technicians', propertyId ?? 'none'] as const,
+    ['pendingIds', 'technicians', propertyId ?? 'none'] as const,
   pendingTenants: (propertyId: string | null | undefined) =>
-    ['pendingCounts', 'tenants', propertyId ?? 'none'] as const,
+    ['pendingIds', 'tenants', propertyId ?? 'none'] as const,
 }

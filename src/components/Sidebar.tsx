@@ -8,10 +8,12 @@ export interface SidebarProps {
   onToggle: () => void;
   activeItem: string;
   onActiveItemChange: (item: string) => void;
+  /** Prefer profile role from App; falls back to localStorage if omitted */
+  isPM?: boolean;
 }
 
-const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemChange }) => {
-  // Get user role from localStorage
+const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemChange, isPM: isPMProp }) => {
+  // Fallback for callers that don't pass isPM yet
   const getUserRole = () => {
     try {
       const userStr = localStorage.getItem('user');
@@ -20,11 +22,9 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
         if (user.profile?.role) {
           return user.profile.role;
         }
-        // Check user_metadata first (Supabase auth stores role here)
         if (user.user_metadata?.role) {
           return user.user_metadata.role;
         }
-        // Fallback to raw_user_meta_data
         if (user.raw_user_meta_data?.role) {
           return user.raw_user_meta_data.role;
         }
@@ -32,11 +32,10 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
     } catch (error) {
       console.error('Error parsing user data:', error);
     }
-    return 'super_admin'; // Default to super admin if role not found
+    return 'super_admin';
   };
 
-  const userRole = getUserRole();
-  const isPM = userRole === 'pm';
+  const isPM = isPMProp ?? getUserRole() === 'pm';
   const {
     hasUnseenWorkOrders,
     hasUnseenTechnicians,

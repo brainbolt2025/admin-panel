@@ -12,21 +12,39 @@ const corsHeaders = {
 }
 
 /**
- * Clickable https App Link for Android (email clients block asine://).
- * https://www.sycnmore.com/auth/verified?token=…&confirmation_token=…&type=signup
+ * Verification landing base for tenant/technician emails.
+ * Uses MOBILE_VERIFY_REDIRECT_TO / APP_URL / SITE_URL / BASE_URL.
+ * Allows http://localhost (e.g. http://localhost:5173) for Asine-dev.
  */
+function defaultVerifyOrigin(): string {
+  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+  if (stripeKey.startsWith('sk_test_')) {
+    return 'http://localhost:5173'
+  }
+  return 'https://www.sycnmore.com'
+}
+
 function mobileAuthVerifiedBase(): string {
   const envRedirect = (
     Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
+    Deno.env.get('APP_URL') ||
     Deno.env.get('SITE_URL') ||
-    'https://www.sycnmore.com'
+    Deno.env.get('BASE_URL') ||
+    defaultVerifyOrigin()
   ).replace(/\/$/, '')
-  if (envRedirect.startsWith('https://')) {
-    return envRedirect.endsWith('/auth/verified')
-      ? envRedirect
-      : `${envRedirect}/auth/verified`
+
+  const isLocalHttp =
+    envRedirect.startsWith('http://localhost') ||
+    envRedirect.startsWith('http://127.0.0.1')
+  const isHttps = envRedirect.startsWith('https://')
+
+  if (!isHttps && !isLocalHttp) {
+    return `${defaultVerifyOrigin()}/auth/verified`
   }
-  return 'https://www.sycnmore.com/auth/verified'
+
+  return envRedirect.endsWith('/auth/verified')
+    ? envRedirect
+    : `${envRedirect}/auth/verified`
 }
 
 function extractActionLink(linkData: Record<string, unknown>): string | null {
@@ -35,7 +53,22 @@ function extractActionLink(linkData: Record<string, unknown>): string | null {
   return typeof link === 'string' && link.length > 0 ? link : null
 }
 
-function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string | null {
+/** Mailgun link → confirm-mobile-email (sets Auth + public.users.email_verified), then redirects to app. */
+function buildConfirmMobileEmailLink(token: string, verifyType: string): string {
+  const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').replace(/\/$/, '')
+  const params = new URLSearchParams({
+    token,
+    confirmation_token: token,
+    type: verifyType,
+  })
+  return `${supabaseUrl}/functions/v1/confirm-mobile-email?${params.toString()}`
+}
+
+/** Resend uses magiclink (user already exists); signup type hits email_exists. */
+function buildMobileVerifyLink(
+  linkData: Record<string, unknown>,
+  verifyType: 'magiclink' | 'signup' = 'magiclink',
+): string | null {
   const props = (linkData.properties || {}) as Record<string, unknown>
   const actionLink = extractActionLink(linkData)
   let token =
@@ -44,18 +77,14 @@ function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string 
     null
   if (!token && actionLink) {
     try {
-      token = new URL(actionLink).searchParams.get('token')
+      const url = new URL(actionLink)
+      token = url.searchParams.get('token') || url.searchParams.get('token_hash')
     } catch {
       // ignore
     }
   }
   if (!token) return null
-  const params = new URLSearchParams({
-    token,
-    confirmation_token: token,
-    type: 'signup',
-  })
-  return `${mobileAuthVerifiedBase()}?${params.toString()}`
+  return buildConfirmMobileEmailLink(token, verifyType)
 }
 
 // TypeScript interface for the request body
@@ -200,19 +229,12 @@ serve(async (req) => {
     const name = user.name || (isTechnician ? 'Technician' : 'Tenant')
     const propertyName = user.property_name || 'your property'
 
-    // Step 2: Tenant/technician → token_hash deep link; others → admin web action_link
-    const redirectTo = (isTenant || isTechnician)
-      ? mobileAuthVerifiedBase()
-      : (
-          Deno.env.get('APP_URL') ||
-          Deno.env.get('SITE_URL') ||
-          Deno.env.get('BASE_URL') ||
-          'https://www.sycnmore.com'
-        ).replace(/\/$/, '') + '/auth/verified'
+    // Step 2: Landing URL for Auth redirect + custom Mailgun link
+    const redirectTo = mobileAuthVerifiedBase()
 
     console.log('Generating verification link with redirect_to:', redirectTo)
 
-    // Step 3: Generate a fresh confirmation link via Supabase Admin API
+    // Step 3: Existing users → magiclink (type signup returns email_exists)
     const generateLinkResponse = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
       method: 'POST',
       headers: {
@@ -221,7 +243,7 @@ serve(async (req) => {
         Authorization: `Bearer ${supabaseServiceKey}`,
       },
       body: JSON.stringify({
-        type: 'signup',
+        type: 'magiclink',
         email,
         redirect_to: redirectTo,
       }),
@@ -232,7 +254,7 @@ serve(async (req) => {
       console.error('Error generating verification link:', errorData)
       return new Response(
         JSON.stringify({
-          error: errorData.error_description || errorData.message || 'Failed to generate verification link',
+          error: errorData.error_description || errorData.msg || errorData.message || 'Failed to generate verification link',
         }),
         {
           status: generateLinkResponse.status || 500,
@@ -243,7 +265,7 @@ serve(async (req) => {
 
     const linkData = await generateLinkResponse.json()
     const verifyLink = (isTenant || isTechnician)
-      ? (buildMobileSignupVerifyLink(linkData) || extractActionLink(linkData))
+      ? (buildMobileVerifyLink(linkData, 'magiclink') || extractActionLink(linkData))
       : extractActionLink(linkData)
 
     if (!verifyLink) {
