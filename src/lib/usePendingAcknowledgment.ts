@@ -1,51 +1,68 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-const STORAGE_PREFIX = 'asine_pending_ack'
+const STORAGE_PREFIX = 'asine_pending_ack_ids'
 
-const readAcknowledgedCount = (storageKey: string): number => {
+const readSeenIds = (storageKey: string): string[] => {
   try {
     const raw = localStorage.getItem(storageKey)
-    const parsed = raw ? parseInt(raw, 10) : 0
-    return Number.isFinite(parsed) ? parsed : 0
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    }
+    // Legacy numeric ack format — ignore so a new pending item can show again
+    return []
   } catch {
-    return 0
+    return []
   }
 }
 
-const writeAcknowledgedCount = (storageKey: string, count: number) => {
+const writeSeenIds = (storageKey: string, ids: string[]) => {
   try {
-    localStorage.setItem(storageKey, String(count))
+    localStorage.setItem(storageKey, JSON.stringify(ids))
   } catch {
     // Ignore storage errors (e.g. private browsing)
   }
 }
 
-/**
- * Tracks whether a sidebar "pending" count has any items the PM hasn't
- * seen yet. Visiting the section (calling `acknowledge`) hides the dot by
- * remembering the count at that moment; the dot reappears only once the
- * live count rises above what was last acknowledged (i.e. a new item
- * arrived), not just because something was approved/rejected.
- */
-export function usePendingAcknowledgment(section: string, propertyId: string | null | undefined, currentCount: number) {
-  const storageKey = propertyId ? `${STORAGE_PREFIX}_${section}_${propertyId}` : null
+const normalizePendingIds = (pendingIds: unknown): string[] => {
+  if (!Array.isArray(pendingIds)) return []
+  return pendingIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
 
-  const [acknowledgedCount, setAcknowledgedCount] = useState<number>(() =>
-    storageKey ? readAcknowledgedCount(storageKey) : 0
+/**
+ * Tracks whether a sidebar section has pending items the PM hasn't seen yet.
+ * Visiting the section (calling `acknowledge`) remembers the current pending
+ * IDs. The red dot returns when any new pending ID appears — even if the
+ * total count stayed the same after an approve + new registration.
+ */
+export function usePendingAcknowledgment(
+  section: string,
+  propertyId: string | null | undefined,
+  pendingIds: string[]
+) {
+  const storageKey = propertyId ? `${STORAGE_PREFIX}_${section}_${propertyId}` : null
+  const ids = useMemo(() => normalizePendingIds(pendingIds), [pendingIds])
+
+  const [seenIds, setSeenIds] = useState<string[]>(() =>
+    storageKey ? readSeenIds(storageKey) : []
   )
 
-  // Reload the acknowledged count when switching properties/accounts
   useEffect(() => {
-    setAcknowledgedCount(storageKey ? readAcknowledgedCount(storageKey) : 0)
+    setSeenIds(storageKey ? readSeenIds(storageKey) : [])
   }, [storageKey])
 
   const acknowledge = useCallback(() => {
     if (!storageKey) return
-    setAcknowledgedCount(currentCount)
-    writeAcknowledgedCount(storageKey, currentCount)
-  }, [storageKey, currentCount])
+    setSeenIds(ids)
+    writeSeenIds(storageKey, ids)
+  }, [storageKey, ids])
 
-  const hasUnseenPending = currentCount > acknowledgedCount
+  const hasUnseenPending = useMemo(() => {
+    if (ids.length === 0) return false
+    const seen = new Set(seenIds)
+    return ids.some((id) => !seen.has(id))
+  }, [ids, seenIds])
 
   return { hasUnseenPending, acknowledge }
 }

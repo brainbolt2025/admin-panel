@@ -257,54 +257,54 @@ export async function fetchWorkOrdersQuery(): Promise<PmWorkOrder[]> {
   return transformWorkOrders(enriched)
 }
 
-export async function fetchPendingWorkOrdersCount(
+export async function fetchPendingWorkOrderIds(
   propertyId: string | null | undefined
-): Promise<number> {
-  if (!propertyId) return 0
+): Promise<string[]> {
+  if (!propertyId) return []
 
   const supabaseClient = getAuthenticatedSupabase()
-  const { count, error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from('work_orders')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('status', 'Pending')
     .eq('property_id', propertyId)
 
   if (error) throw error
-  return count ?? 0
+  return (data ?? []).map((row) => row.id).filter(Boolean)
 }
 
-export async function fetchPendingTechniciansCount(
+export async function fetchPendingTechnicianIds(
   propertyId: string | null | undefined
-): Promise<number> {
-  if (!propertyId) return 0
+): Promise<string[]> {
+  if (!propertyId) return []
 
   const supabaseClient = getAuthenticatedSupabase()
-  const { count, error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from('users')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('role', 'technician')
     .eq('approved', APPROVAL_STATUS.pending)
     .eq('property_id', propertyId)
 
   if (error) throw error
-  return count ?? 0
+  return (data ?? []).map((row) => row.id).filter(Boolean)
 }
 
-export async function fetchPendingTenantsCount(
+export async function fetchPendingTenantIds(
   propertyId: string | null | undefined
-): Promise<number> {
-  if (!propertyId) return 0
+): Promise<string[]> {
+  if (!propertyId) return []
 
   const supabaseClient = getAuthenticatedSupabase()
-  const { count, error } = await supabaseClient
+  const { data, error } = await supabaseClient
     .from('users')
-    .select('id', { count: 'exact', head: true })
+    .select('id')
     .eq('role', 'tenant')
     .eq('approved', APPROVAL_STATUS.pending)
     .eq('property_id', propertyId)
 
   if (error) throw error
-  return count ?? 0
+  return (data ?? []).map((row) => row.id).filter(Boolean)
 }
 
 export interface PendingAlertWorkOrder {
