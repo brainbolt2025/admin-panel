@@ -16,25 +16,37 @@ function defaultAppOrigin(): string {
   return 'https://www.sycnmore.com'
 }
 
+/** https, localhost http, or app schemes like asine:// */
+function isAllowedMobileRedirect(url: string): boolean {
+  if (url.startsWith('https://')) return true
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true
+  // Custom deep-link schemes (asine://…) — not plain http
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && !url.startsWith('http://')) return true
+  return false
+}
+
+function toAuthVerifiedBase(envRedirect: string, fallbackOrigin: string): string {
+  const raw = envRedirect.replace(/\/+$/, '')
+  if (!isAllowedMobileRedirect(raw)) {
+    return `${fallbackOrigin.replace(/\/+$/, '')}/auth/verified`
+  }
+  if (/auth\/verified$/i.test(raw)) return raw
+  // asine:// → asine://auth/verified
+  if (/^[a-z][a-z0-9+.-]*:$/i.test(raw) || /^[a-z][a-z0-9+.-]*:\/\/$/i.test(envRedirect.trim())) {
+    return `${raw.split(':')[0]}://auth/verified`
+  }
+  return `${raw}/auth/verified`
+}
+
 function appVerifiedRedirectUrl(extra: Record<string, string> = {}): string {
-  const envRedirect = (
+  const envRedirect =
     Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
     Deno.env.get('APP_URL') ||
     Deno.env.get('SITE_URL') ||
     Deno.env.get('BASE_URL') ||
     defaultAppOrigin()
-  ).replace(/\/$/, '')
 
-  const isLocalHttp =
-    envRedirect.startsWith('http://localhost') ||
-    envRedirect.startsWith('http://127.0.0.1')
-  const isHttps = envRedirect.startsWith('https://')
-  const origin = isHttps || isLocalHttp ? envRedirect : defaultAppOrigin()
-
-  const base = origin.endsWith('/auth/verified')
-    ? origin
-    : `${origin}/auth/verified`
-
+  const base = toAuthVerifiedBase(envRedirect, defaultAppOrigin())
   const params = new URLSearchParams({ email_verified: '1', ...extra })
   return `${base}?${params.toString()}`
 }
@@ -73,6 +85,8 @@ serve(async (req) => {
       url.searchParams.get('confirmation_token') ||
       url.searchParams.get('token_hash')
     const typeParam = (url.searchParams.get('type') || 'magiclink').toLowerCase()
+    // Optional hint so otp_expired (token already consumed by a scanner) can still deep-link
+    const hintUserId = url.searchParams.get('user_id')
 
     if (!token) {
       return htmlError('Missing verification token.')
@@ -84,15 +98,54 @@ serve(async (req) => {
       return htmlError('Server configuration error.', 500)
     }
 
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
     // GoTrue accept signup | magiclink | invite | recovery | email_change | email
     const verifyType =
       typeParam === 'signup' || typeParam === 'invite' || typeParam === 'email'
         ? typeParam
         : 'magiclink'
 
+    /** Sync app flag + redirect to asine:// (idempotent — safe if already verified). */
+    async function finishVerified(userId: string, alreadyConfirmed: boolean): Promise<Response> {
+      if (!alreadyConfirmed) {
+        const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+          email_confirm: true,
+        })
+        if (confirmError) {
+          console.warn('Could not force email_confirm:', confirmError.message)
+        }
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('users')
+        .update({ email_verified: true })
+        .eq('id', userId)
+        .neq('role', 'pm')
+
+      if (updateError) {
+        console.error('Failed to set email_verified:', updateError)
+        return htmlError(
+          'Account confirmed but app verification flag failed. Please contact support.',
+          500,
+        )
+      }
+
+      console.log('✅ Mobile email verified for user:', userId)
+      return redirect(
+        appVerifiedRedirectUrl({
+          type: verifyType,
+          user_id: userId,
+        }),
+      )
+    }
+
     console.log('confirm-mobile-email:', {
       type: verifyType,
       tokenPrefix: token.substring(0, 12) + '...',
+      hintUserId: hintUserId || null,
     })
 
     const verifyResponse = await fetch(`${supabaseUrl}/auth/v1/verify`, {
@@ -114,19 +167,31 @@ serve(async (req) => {
       error?: string
       error_description?: string
       msg?: string
+      error_code?: string
     }
 
     if (!verifyResponse.ok) {
       console.error('Auth verify failed:', verifyResponse.status, verifyPayload)
 
-      // Token may already be consumed while Auth is confirmed — still sync app flag if we can.
-      // Fall through only when we have no user; otherwise show error.
+      // Token already used (scanner / double-open) but Auth may already be confirmed —
+      // still sync email_verified and redirect so Android can open the app.
+      if (hintUserId) {
+        const { data: authData, error: authLookupError } =
+          await supabaseAdmin.auth.admin.getUserById(hintUserId)
+        if (authLookupError) {
+          console.warn('Idempotent lookup failed:', authLookupError.message)
+        } else if (authData.user?.email_confirmed_at) {
+          console.log('♻️ Token spent but Auth confirmed — idempotent redirect:', hintUserId)
+          return await finishVerified(hintUserId, true)
+        }
+      }
+
       return htmlError(
         verifyPayload.error_description ||
           verifyPayload.msg ||
           verifyPayload.error ||
           'Invalid or expired verification link. Please request a new email.',
-        verifyResponse.status === 401 ? 400 : verifyResponse.status,
+        verifyResponse.status === 401 || verifyResponse.status === 403 ? 400 : verifyResponse.status,
       )
     }
 
@@ -136,39 +201,7 @@ serve(async (req) => {
       return htmlError('Verification succeeded but user was not returned.', 500)
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    })
-
-    // Ensure Auth email is confirmed (magiclink / signup should already do this)
-    if (!verifyPayload.user?.email_confirmed_at) {
-      const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-        email_confirm: true,
-      })
-      if (confirmError) {
-        console.warn('Could not force email_confirm:', confirmError.message)
-      }
-    }
-
-    const { error: updateError } = await supabaseAdmin
-      .from('users')
-      .update({ email_verified: true })
-      .eq('id', userId)
-      .neq('role', 'pm')
-
-    if (updateError) {
-      console.error('Failed to set email_verified:', updateError)
-      return htmlError('Account confirmed but app verification flag failed. Please contact support.', 500)
-    }
-
-    console.log('✅ Mobile email verified for user:', userId)
-
-    return redirect(
-      appVerifiedRedirectUrl({
-        type: verifyType,
-        user_id: userId,
-      }),
-    )
+    return await finishVerified(userId, !!verifyPayload.user?.email_confirmed_at)
   } catch (error) {
     console.error('confirm-mobile-email error:', error)
     return htmlError(
