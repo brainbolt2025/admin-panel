@@ -338,19 +338,12 @@ export async function fetchPendingAlerts(): Promise<PendingAlerts> {
 
   const supabaseClient = getAuthenticatedSupabase()
 
-  const [workOrdersResult, techniciansResult, tenantsResult] = await Promise.all([
+  const [workOrdersResult, tenantsResult] = await Promise.all([
     supabaseClient
       .from('work_orders')
       .select('id, title, tenant_name, status, created_at')
       .eq('property_id', propertyId)
       .eq('status', 'Pending')
-      .order('created_at', { ascending: false }),
-    supabaseClient
-      .from('users')
-      .select('id, name, email, created_at')
-      .eq('property_id', propertyId)
-      .eq('role', 'technician')
-      .eq('approved', APPROVAL_STATUS.pending)
       .order('created_at', { ascending: false }),
     supabaseClient
       .from('users')
@@ -362,7 +355,6 @@ export async function fetchPendingAlerts(): Promise<PendingAlerts> {
   ])
 
   if (workOrdersResult.error) throw workOrdersResult.error
-  if (techniciansResult.error) throw techniciansResult.error
   if (tenantsResult.error) throw tenantsResult.error
 
   return {
@@ -374,7 +366,8 @@ export async function fetchPendingAlerts(): Promise<PendingAlerts> {
       status: row.status,
       created_at: row.created_at,
     })),
-    technicians: techniciansResult.data ?? [],
+    // Technicians are auto-approved on invite — no pending-approval alerts
+    technicians: [],
     tenants: tenantsResult.data ?? [],
   }
 }

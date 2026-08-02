@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Bell, ClipboardList, Users, Wrench, X } from 'lucide-react'
+import { Bell, ClipboardList, Users, X } from 'lucide-react'
 import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext'
 import { getAuthenticatedSupabase } from '../lib/supabase'
 import {
-  alertKeyForTechnician,
   alertKeyForTenant,
   alertKeyForWorkOrder,
   getUnseenAlertKeys,
@@ -19,7 +18,7 @@ import {
 
 interface AlertsBellProps {
   onNavigateToWorkOrder: (workOrderId: string) => void
-  onNavigateToTechnicians: () => void
+  onNavigateToTechnicians?: () => void
   onNavigateToTenants: () => void
   /** Optional className for the outer trigger row */
   className?: string
@@ -34,7 +33,6 @@ const emptyAlerts: PendingAlerts = {
 
 const AlertsBell = ({
   onNavigateToWorkOrder,
-  onNavigateToTechnicians,
   onNavigateToTenants,
   className = '',
 }: AlertsBellProps) => {
@@ -46,7 +44,6 @@ const AlertsBell = ({
   const [seenKeys, setSeenKeys] = useState<Set<string>>(new Set())
   const {
     acknowledgeWorkOrders,
-    acknowledgeTechnicians,
     acknowledgeTenants,
   } = usePendingWorkOrders()
 
@@ -94,14 +91,13 @@ const AlertsBell = ({
       setSeenKeys(nowSeen)
 
       acknowledgeWorkOrders()
-      acknowledgeTechnicians()
       acknowledgeTenants()
     } catch (err) {
       console.error('Error opening alerts:', err)
     } finally {
       setLoading(false)
     }
-  }, [acknowledgeWorkOrders, acknowledgeTechnicians, acknowledgeTenants])
+  }, [acknowledgeWorkOrders, acknowledgeTenants])
 
   const handleBellClick = () => {
     if (open) {
@@ -130,12 +126,6 @@ const AlertsBell = ({
     setOpen(false)
     setHighlightedKeys(new Set())
     onNavigateToWorkOrder(workOrder.id)
-  }
-
-  const handleTechnicianClick = (_user: PendingAlertUser) => {
-    setOpen(false)
-    setHighlightedKeys(new Set())
-    onNavigateToTechnicians()
   }
 
   const handleTenantClick = (_user: PendingAlertUser) => {
@@ -229,37 +219,6 @@ const AlertsBell = ({
                                   {workOrder.tenant_name && workOrder.status && <span>•</span>}
                                   {workOrder.status && <span>{workOrder.status}</span>}
                                 </div>
-                              </div>
-                              {isUnread && (
-                                <span className="mt-1 shrink-0 w-2 h-2 rounded-full bg-teal-500" />
-                              )}
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </AlertSection>
-                  )}
-
-                  {alerts.technicians.length > 0 && (
-                    <AlertSection title="Technicians" icon={<Wrench className="w-4 h-4 text-teal-600" />}>
-                      {alerts.technicians.map((tech) => {
-                        const key = alertKeyForTechnician(tech.id)
-                        const isUnread = highlightedKeys.has(key)
-                        return (
-                          <button
-                            key={tech.id}
-                            type="button"
-                            className={itemClassName(isUnread)}
-                            onClick={() => handleTechnicianClick(tech)}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 mb-1">
-                                  {tech.name || 'Unnamed technician'}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  {tech.email || 'Pending approval'}
-                                </p>
                               </div>
                               {isUnread && (
                                 <span className="mt-1 shrink-0 w-2 h-2 rounded-full bg-teal-500" />

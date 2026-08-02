@@ -12,9 +12,9 @@ const corsHeaders = {
 }
 
 /**
- * Verification landing base for technician emails.
- * Uses MOBILE_VERIFY_REDIRECT_TO / APP_URL / SITE_URL / BASE_URL.
- * Allows http://localhost (e.g. http://localhost:5173) for Asine-dev.
+ * Auth redirect_to / post-verify landing for technician emails.
+ * MOBILE_VERIFY_REDIRECT_TO / APP_URL / SITE_URL / BASE_URL.
+ * Allows https, http://localhost, and app schemes (asine://auth/verified).
  */
 function defaultVerifyOrigin(): string {
   const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
@@ -24,27 +24,33 @@ function defaultVerifyOrigin(): string {
   return 'https://www.sycnmore.com'
 }
 
+function isAllowedMobileRedirect(url: string): boolean {
+  if (url.startsWith('https://')) return true
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && !url.startsWith('http://')) return true
+  return false
+}
+
+function toAuthVerifiedBase(envRedirect: string, fallbackOrigin: string): string {
+  const raw = envRedirect.replace(/\/+$/, '')
+  if (!isAllowedMobileRedirect(raw)) {
+    return `${fallbackOrigin.replace(/\/+$/, '')}/auth/verified`
+  }
+  if (/auth\/verified$/i.test(raw)) return raw
+  if (/^[a-z][a-z0-9+.-]*:$/i.test(raw) || /^[a-z][a-z0-9+.-]*:\/\/$/i.test(envRedirect.trim())) {
+    return `${raw.split(':')[0]}://auth/verified`
+  }
+  return `${raw}/auth/verified`
+}
+
 function mobileAuthVerifiedBase(): string {
-  const envRedirect = (
+  const envRedirect =
     Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
     Deno.env.get('APP_URL') ||
     Deno.env.get('SITE_URL') ||
     Deno.env.get('BASE_URL') ||
     defaultVerifyOrigin()
-  ).replace(/\/$/, '')
-
-  const isLocalHttp =
-    envRedirect.startsWith('http://localhost') ||
-    envRedirect.startsWith('http://127.0.0.1')
-  const isHttps = envRedirect.startsWith('https://')
-
-  if (!isHttps && !isLocalHttp) {
-    return `${defaultVerifyOrigin()}/auth/verified`
-  }
-
-  return envRedirect.endsWith('/auth/verified')
-    ? envRedirect
-    : `${envRedirect}/auth/verified`
+  return toAuthVerifiedBase(envRedirect, defaultVerifyOrigin())
 }
 
 function extractActionLink(linkData: Record<string, unknown>): string | null {
@@ -54,17 +60,25 @@ function extractActionLink(linkData: Record<string, unknown>): string | null {
 }
 
 /** Mailgun link → confirm-mobile-email (Auth + email_verified), then redirects to app. */
-function buildConfirmMobileEmailLink(token: string, verifyType: string): string {
+function buildConfirmMobileEmailLink(
+  token: string,
+  verifyType: string,
+  userId?: string,
+): string {
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').replace(/\/$/, '')
   const params = new URLSearchParams({
     token,
     confirmation_token: token,
     type: verifyType,
   })
+  if (userId) params.set('user_id', userId)
   return `${supabaseUrl}/functions/v1/confirm-mobile-email?${params.toString()}`
 }
 
-function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string | null {
+function buildMobileSignupVerifyLink(
+  linkData: Record<string, unknown>,
+  userId?: string,
+): string | null {
   const props = (linkData.properties || {}) as Record<string, unknown>
   const actionLink = extractActionLink(linkData)
   let token =
@@ -80,16 +94,27 @@ function buildMobileSignupVerifyLink(linkData: Record<string, unknown>): string 
     }
   }
   if (!token) return null
-  return buildConfirmMobileEmailLink(token, 'signup')
+  return buildConfirmMobileEmailLink(token, 'signup', userId)
 }
 
 // TypeScript interface for the request body
 interface CreateTechnicianRequest {
   email: string
-  password: string
-  name: string
+  first_name: string
+  last_name: string
   property_id?: string
   property_name?: string
+  /** @deprecated PM no longer sets password — ignored if sent */
+  password?: string
+  /** @deprecated Use first_name + last_name */
+  name?: string
+}
+
+/** Cryptographically random 6-digit numeric password (100000–999999). */
+function generateSixDigitPassword(): string {
+  const buf = new Uint32Array(1)
+  crypto.getRandomValues(buf)
+  return String(100000 + (buf[0] % 900000))
 }
 
 // Main handler function
@@ -116,6 +141,72 @@ serve(async (req) => {
       )
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+    if (!supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({
+          error: 'Missing Supabase service role key. Please set SUPABASE_SERVICE_ROLE_KEY secret.',
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
+    // Require a valid caller JWT and a PM profile for a specific property
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
+    const supabaseAuthed = createClient(supabaseUrl, supabaseAnonKey || supabaseServiceKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: authData, error: authError } = await supabaseAuthed.auth.getUser()
+    if (authError || !authData.user) {
+      console.error('Authentication error:', authError)
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: pmProfile, error: pmProfileError } = await supabase
+      .from('users')
+      .select('id, role, property_id, property_name')
+      .eq('id', authData.user.id)
+      .maybeSingle()
+
+    if (pmProfileError || !pmProfile || pmProfile.role !== 'pm' || !pmProfile.property_id) {
+      console.error('PM authorization failed:', {
+        userId: authData.user.id,
+        role: pmProfile?.role,
+        hasProperty: !!pmProfile?.property_id,
+        error: pmProfileError?.message,
+      })
+      return new Response(
+        JSON.stringify({ error: 'Only property managers can invite technicians for their property.' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
     // Parse the request body
     let body: CreateTechnicianRequest
     try {
@@ -134,7 +225,6 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Invalid JSON in request body',
-          details: parseError instanceof Error ? parseError.message : 'Unknown error',
         }),
         {
           status: 400,
@@ -143,13 +233,19 @@ serve(async (req) => {
       )
     }
 
-    const { email, password, name, property_id, property_name } = body
+    const firstName = (body.first_name || '').trim()
+    const lastName = (body.last_name || '').trim()
+    const email = (body.email || '').trim()
+    const { property_id, property_name } = body
+    const name =
+      [firstName, lastName].filter(Boolean).join(' ') ||
+      (typeof body.name === 'string' ? body.name.trim() : '')
 
-    // Validate required fields
-    if (!email || !password || !name) {
+    // Validate required fields (PM provides names + email; password is generated)
+    if (!email || !firstName || !lastName) {
       return new Response(
         JSON.stringify({
-          error: 'Missing required fields. Required: email, password, name',
+          error: 'Missing required fields. Required: email, first_name, last_name',
         }),
         {
           status: 400,
@@ -157,6 +253,8 @@ serve(async (req) => {
         },
       )
     }
+
+    const password = generateSixDigitPassword()
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -170,23 +268,20 @@ serve(async (req) => {
       )
     }
 
-    // Initialize Supabase client with service role key
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-
-    if (!supabaseServiceKey) {
+    // Caller may only invite for their own property (ignore/reject mismatched body)
+    if (property_id && property_id !== pmProfile.property_id) {
+      console.error('Property mismatch:', {
+        requested: property_id,
+        pmProperty: pmProfile.property_id,
+      })
       return new Response(
-        JSON.stringify({
-          error: 'Missing Supabase service role key. Please set SUPABASE_SERVICE_ROLE_KEY secret.',
-        }),
+        JSON.stringify({ error: 'You can only invite technicians for your own property.' }),
         {
-          status: 500,
+          status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       )
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Step 1: Check if user already exists
     console.log('Checking for existing technician by email')
@@ -208,12 +303,13 @@ serve(async (req) => {
       )
     }
 
-    // Step 2: Resolve property assignment (same logic as create-tenant)
-    let finalPropertyId: string | null = property_id || null
-    let finalPropertyName: string | null = property_name || null
+    // Step 2: Always scope to the authenticated PM's property
+    let finalPropertyId: string = pmProfile.property_id
+    let finalPropertyName: string | null =
+      property_name || pmProfile.property_name || null
 
-    if (finalPropertyId && !finalPropertyName) {
-      console.log('Resolving property name from property_id:', finalPropertyId)
+    if (!finalPropertyName) {
+      console.log('Resolving property name from PM property_id:', finalPropertyId)
       const { data: propData, error: propError } = await supabase
         .from('properties')
         .select('id, name')
@@ -224,70 +320,9 @@ serve(async (req) => {
         finalPropertyName = propData.name
         console.log('Property found by ID:', propData)
       } else {
-        return new Response(
-          JSON.stringify({
-            error: `Property with ID "${finalPropertyId}" not found. Provide a valid property_id or property_name.`,
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        )
+        console.warn('Property name missing for PM property. Using fallback.')
+        finalPropertyName = 'Unknown Property'
       }
-    } else if (!finalPropertyId && finalPropertyName) {
-      console.log('Resolving property id from property name:', finalPropertyName)
-      const { data: propData, error: propError } = await supabase
-        .from('properties')
-        .select('id, name')
-        .eq('name', finalPropertyName)
-        .maybeSingle()
-
-      if (!propError && propData) {
-        finalPropertyId = propData.id
-        finalPropertyName = propData.name
-        console.log('Property found by name:', propData)
-      } else {
-        console.log('Exact match failed. Trying case-insensitive search.')
-        const { data: propDataCI, error: propErrorCI } = await supabase
-          .from('properties')
-          .select('id, name')
-          .ilike('name', finalPropertyName)
-          .maybeSingle()
-
-        if (!propErrorCI && propDataCI) {
-          finalPropertyId = propDataCI.id
-          finalPropertyName = propDataCI.name
-          console.log('Property found by name (case-insensitive):', propDataCI)
-        } else {
-          return new Response(
-            JSON.stringify({
-              error: `Property with name "${finalPropertyName}" not found. Provide a valid property_id or property_name.`,
-              hint: 'Check spelling or use property_id.',
-            }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            },
-          )
-        }
-      }
-    }
-
-    if (!finalPropertyId) {
-      return new Response(
-        JSON.stringify({
-          error: 'Property assignment required. Provide property_id or property_name.',
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      )
-    }
-
-    if (!finalPropertyName) {
-      console.warn('Property name missing despite property_id resolution. Using fallback.')
-      finalPropertyName = 'Unknown Property'
     }
 
     console.log('Resolved property assignment:', {
@@ -386,7 +421,7 @@ serve(async (req) => {
           role: 'technician',
           property_id: finalPropertyId,
           property_name: finalPropertyName,
-          approved: 'pending',
+          approved: 'approved',
         })
         .eq('id', authUserId)
         .select('id, name, email, role, property_id, property_name, approved')
@@ -413,7 +448,7 @@ serve(async (req) => {
               role: 'technician',
               property_id: finalPropertyId,
               property_name: finalPropertyName,
-              approved: 'pending',
+              approved: 'approved',
             })
             .select('id, name, email, role, property_id, property_name, approved')
             .single()
@@ -453,37 +488,8 @@ serve(async (req) => {
 
     console.log('Technician created successfully:', userData?.id || authUserId)
 
-    // Step 4.5: Notify PM about new technician signup (non-blocking)
-    try {
-      console.log('Notifying PM about new technician signup')
-      const notifyPMResponse = await fetch(`${supabaseUrl}/functions/v1/notify-pm-signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'apikey': supabaseServiceKey,
-        },
-        body: JSON.stringify({
-          property_id: finalPropertyId,
-          user_name: name,
-          user_email: email,
-          user_role: 'technician',
-        }),
-      })
-      
-      if (notifyPMResponse.ok) {
-        const pmNotifyResult = await notifyPMResponse.json().catch(() => ({}))
-        console.log('✅ PM notification sent:', pmNotifyResult)
-      } else {
-        const pmNotifyError = await notifyPMResponse.text().catch(() => 'Unknown error')
-        console.warn('⚠️ PM notification failed (non-critical):', pmNotifyError)
-      }
-    } catch (pmNotifyError) {
-      console.warn('⚠️ PM notification error (non-critical):', pmNotifyError)
-      // Continue - PM notification failure shouldn't block technician creation
-    }
-
-    // Step 5: Generate verification link and send email (same approach as tenants)
+    // Step 5: Generate verification link and send credentials email
+    // (PM invited this technician — skip notify-pm-signup)
     console.log('Step 5: Sending verification email to technician')
     
     let emailSent = false
@@ -516,7 +522,7 @@ serve(async (req) => {
       } else {
         const linkData = await generateLinkResponse.json()
         const verifyLink =
-          buildMobileSignupVerifyLink(linkData) || extractActionLink(linkData)
+          buildMobileSignupVerifyLink(linkData, authUserId) || extractActionLink(linkData)
 
         if (!verifyLink) {
           console.error('No hashed_token/action_link in generate_link response:', JSON.stringify(linkData, null, 2))
@@ -537,31 +543,34 @@ serve(async (req) => {
             console.warn('MAILGUN_API_KEY not configured, skipping custom email send')
             emailError = 'Email service not configured. Supabase default email may be sent.'
           } else {
-            // Build technician-specific email HTML
+            // Build technician invite email: verify deep link + login credentials
             const htmlBody = `
                 <html>
                   <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2 style="color: #0f766e; margin-bottom: 20px;">Welcome to Asine</h2>
                     <p>Hi ${name},</p>
-                    <p>Please verify your email to activate your technician account at ${finalPropertyName || 'your property'}.</p>
+                    <p>Your property manager invited you as a technician at <strong>${finalPropertyName || 'your property'}</strong>.</p>
+                    <p>Tap the button below to verify your email and open the Asine app. Then sign in with the credentials below.</p>
                     <div style="text-align: center; margin: 30px 0;">
                       <a href="${verifyLink}" 
                         style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-                        Verify Account
+                        Verify &amp; Open App
                       </a>
                     </div>
+                    <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 16px; margin: 24px 0;">
+                      <p style="margin: 0 0 8px 0; font-weight: bold; color: #0f766e;">Your login credentials</p>
+                      <p style="margin: 4px 0;"><strong>Email:</strong> ${email}</p>
+                      <p style="margin: 4px 0;"><strong>Temporary password:</strong> <span style="font-size: 1.25rem; letter-spacing: 0.15em; font-family: monospace;">${password}</span></p>
+                    </div>
                     <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                      <strong>Important:</strong> This verification link expires in 24 hours.
+                      <strong>Important:</strong> The verification link expires in 24 hours. You can change your password after signing in.
                     </p>
                     <p style="color: #666; font-size: 14px;">
-                      After verifying your email, your account will be reviewed by your property manager before you can sign in.
-                    </p>
-                    <p style="color: #666; font-size: 14px;">
-                      If you didn't create an account, please ignore this email.
+                      If you didn&apos;t expect this invitation, please ignore this email.
                     </p>
                     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
                     <p style="color: #999; font-size: 12px;">
-                      If the button doesn't work, copy and paste this link into your browser:<br>
+                      If the button doesn&apos;t work, copy and paste this link into your browser:<br>
                       <a href="${verifyLink}" style="color: #0f766e; word-break: break-all;">${verifyLink}</a>
                     </p>
                   </body>
@@ -572,15 +581,18 @@ serve(async (req) => {
 
 Hi ${name},
 
-Please verify your email to activate your technician account at ${finalPropertyName || 'your property'}.
+Your property manager invited you as a technician at ${finalPropertyName || 'your property'}.
 
-Verification Link: ${verifyLink}
+Verify your email and open the app:
+${verifyLink}
 
-This link expires in 24 hours.
+Your login credentials:
+Email: ${email}
+Temporary password: ${password}
 
-After verifying your email, your account will be reviewed by your property manager before you can sign in.
+The verification link expires in 24 hours. You can change your password after signing in.
 
-If you didn't create an account, please ignore this email.`
+If you didn't expect this invitation, please ignore this email.`
             
             // Send via Mailgun
             const mailgunBaseUrl = MAILGUN_REGION === 'eu' 
@@ -592,7 +604,7 @@ If you didn't create an account, please ignore this email.`
             const formData = new FormData()
             formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)
             formData.append('to', email)
-            formData.append('subject', 'Verify your Asine technician account')
+            formData.append('subject', 'Your Asine technician invitation')
             formData.append('html', htmlBody)
             formData.append('text', textBody)
             
@@ -635,14 +647,19 @@ If you didn't create an account, please ignore this email.`
         user_id: authUserId,
         email,
         name,
+        first_name: firstName,
+        last_name: lastName,
         property_id: finalPropertyId,
         property_name: finalPropertyName,
-        approved: 'pending',
+        approved: 'approved',
         email_sent: emailSent,
         email_error: emailError || undefined,
-        message: emailSent 
-          ? 'Technician account created successfully. A verification email has been sent. Please check your email to verify your account before signing in.'
-          : 'Technician account created successfully. ' + (emailError ? 'However, there was an issue sending the verification email. ' + emailError + '.' : 'A verification email may have been sent.') + ' Please verify your email before signing in. Your account awaits PM approval after email verification.',
+        message: emailSent
+          ? 'Technician invited successfully. Login credentials and a verification link were emailed.'
+          : 'Technician account created. ' +
+            (emailError
+              ? 'However, there was an issue sending the invitation email. ' + emailError + '.'
+              : 'An invitation email may have been sent.'),
       }),
       {
         status: 200,

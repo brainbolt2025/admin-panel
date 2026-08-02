@@ -12,9 +12,9 @@ const corsHeaders = {
 }
 
 /**
- * Verification landing base for tenant/technician emails.
- * Uses MOBILE_VERIFY_REDIRECT_TO / APP_URL / SITE_URL / BASE_URL.
- * Allows http://localhost (e.g. http://localhost:5173) for Asine-dev.
+ * Auth redirect_to / post-verify landing for tenant/technician emails.
+ * MOBILE_VERIFY_REDIRECT_TO / APP_URL / SITE_URL / BASE_URL.
+ * Allows https, http://localhost, and app schemes (asine://auth/verified).
  */
 function defaultVerifyOrigin(): string {
   const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
@@ -24,27 +24,33 @@ function defaultVerifyOrigin(): string {
   return 'https://www.sycnmore.com'
 }
 
+function isAllowedMobileRedirect(url: string): boolean {
+  if (url.startsWith('https://')) return true
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url) && !url.startsWith('http://')) return true
+  return false
+}
+
+function toAuthVerifiedBase(envRedirect: string, fallbackOrigin: string): string {
+  const raw = envRedirect.replace(/\/+$/, '')
+  if (!isAllowedMobileRedirect(raw)) {
+    return `${fallbackOrigin.replace(/\/+$/, '')}/auth/verified`
+  }
+  if (/auth\/verified$/i.test(raw)) return raw
+  if (/^[a-z][a-z0-9+.-]*:$/i.test(raw) || /^[a-z][a-z0-9+.-]*:\/\/$/i.test(envRedirect.trim())) {
+    return `${raw.split(':')[0]}://auth/verified`
+  }
+  return `${raw}/auth/verified`
+}
+
 function mobileAuthVerifiedBase(): string {
-  const envRedirect = (
+  const envRedirect =
     Deno.env.get('MOBILE_VERIFY_REDIRECT_TO') ||
     Deno.env.get('APP_URL') ||
     Deno.env.get('SITE_URL') ||
     Deno.env.get('BASE_URL') ||
     defaultVerifyOrigin()
-  ).replace(/\/$/, '')
-
-  const isLocalHttp =
-    envRedirect.startsWith('http://localhost') ||
-    envRedirect.startsWith('http://127.0.0.1')
-  const isHttps = envRedirect.startsWith('https://')
-
-  if (!isHttps && !isLocalHttp) {
-    return `${defaultVerifyOrigin()}/auth/verified`
-  }
-
-  return envRedirect.endsWith('/auth/verified')
-    ? envRedirect
-    : `${envRedirect}/auth/verified`
+  return toAuthVerifiedBase(envRedirect, defaultVerifyOrigin())
 }
 
 function extractActionLink(linkData: Record<string, unknown>): string | null {
@@ -54,13 +60,18 @@ function extractActionLink(linkData: Record<string, unknown>): string | null {
 }
 
 /** Mailgun link → confirm-mobile-email (sets Auth + public.users.email_verified), then redirects to app. */
-function buildConfirmMobileEmailLink(token: string, verifyType: string): string {
+function buildConfirmMobileEmailLink(
+  token: string,
+  verifyType: string,
+  userId?: string,
+): string {
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').replace(/\/$/, '')
   const params = new URLSearchParams({
     token,
     confirmation_token: token,
     type: verifyType,
   })
+  if (userId) params.set('user_id', userId)
   return `${supabaseUrl}/functions/v1/confirm-mobile-email?${params.toString()}`
 }
 
@@ -68,6 +79,7 @@ function buildConfirmMobileEmailLink(token: string, verifyType: string): string 
 function buildMobileVerifyLink(
   linkData: Record<string, unknown>,
   verifyType: 'magiclink' | 'signup' = 'magiclink',
+  userId?: string,
 ): string | null {
   const props = (linkData.properties || {}) as Record<string, unknown>
   const actionLink = extractActionLink(linkData)
@@ -84,7 +96,7 @@ function buildMobileVerifyLink(
     }
   }
   if (!token) return null
-  return buildConfirmMobileEmailLink(token, verifyType)
+  return buildConfirmMobileEmailLink(token, verifyType, userId)
 }
 
 // TypeScript interface for the request body
@@ -265,7 +277,7 @@ serve(async (req) => {
 
     const linkData = await generateLinkResponse.json()
     const verifyLink = (isTenant || isTechnician)
-      ? (buildMobileVerifyLink(linkData, 'magiclink') || extractActionLink(linkData))
+      ? (buildMobileVerifyLink(linkData, 'magiclink', user.id) || extractActionLink(linkData))
       : extractActionLink(linkData)
 
     if (!verifyLink) {

@@ -38,10 +38,8 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
   const isPM = isPMProp ?? getUserRole() === 'pm';
   const {
     hasUnseenWorkOrders,
-    hasUnseenTechnicians,
     hasUnseenTenants,
     acknowledgeWorkOrders,
-    acknowledgeTechnicians,
     acknowledgeTenants,
   } = usePendingWorkOrders();
 
@@ -108,7 +106,6 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                       onClick={() => {
                         onActiveItemChange(item.id);
                         if (item.id === 'Work Orders') acknowledgeWorkOrders();
-                        if (item.id === 'Technicians') acknowledgeTechnicians();
                         if (item.id === 'Tenants') acknowledgeTenants();
                       }}
                       className={`
@@ -127,12 +124,6 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                         <span className="ml-3 inline-flex items-center justify-center">
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
                           <span className="sr-only">New pending work orders</span>
-                        </span>
-                      )}
-                      {item.id === 'Technicians' && isPM && hasUnseenTechnicians && (
-                        <span className="ml-3 inline-flex items-center justify-center">
-                          <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-                          <span className="sr-only">New pending technicians</span>
                         </span>
                       )}
                       {item.id === 'Tenants' && isPM && hasUnseenTenants && (

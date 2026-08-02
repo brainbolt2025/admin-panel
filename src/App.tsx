@@ -22,7 +22,6 @@ import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 import { queryKeys } from './lib/queryKeys'
 import {
   fetchPendingWorkOrderIds,
-  fetchPendingTechnicianIds,
   fetchPendingTenantIds,
 } from './lib/pmQueries'
 import {
@@ -147,12 +146,6 @@ function App() {
     enabled: isPmUser && !!propertyId,
   })
 
-  const { data: pendingTechnicianIdsData } = useQuery({
-    queryKey: queryKeys.pendingTechnicians(propertyId),
-    queryFn: () => fetchPendingTechnicianIds(propertyId),
-    enabled: isPmUser && !!propertyId,
-  })
-
   const { data: pendingTenantIdsData } = useQuery({
     queryKey: queryKeys.pendingTenants(propertyId),
     queryFn: () => fetchPendingTenantIds(propertyId),
@@ -160,11 +153,10 @@ function App() {
   })
 
   const pendingWorkOrderIds = pendingWorkOrderIdsData ?? EMPTY_IDS
-  const pendingTechnicianIds = pendingTechnicianIdsData ?? EMPTY_IDS
   const pendingTenantIds = pendingTenantIdsData ?? EMPTY_IDS
 
   const pendingWorkOrdersCount = pendingWorkOrderIds.length
-  const pendingTechniciansCount = pendingTechnicianIds.length
+  const pendingTechniciansCount = 0
   const pendingTenantsCount = pendingTenantIds.length
 
   const refreshPendingCount = useCallback(() => {
@@ -172,8 +164,8 @@ function App() {
   }, [queryClient, propertyId])
 
   const refreshPendingTechniciansCount = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.pendingTechnicians(propertyId) })
-  }, [queryClient, propertyId])
+    // Technicians are auto-approved on invite — no pending queue
+  }, [])
 
   const refreshPendingTenantsCount = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.pendingTenants(propertyId) })
@@ -181,8 +173,8 @@ function App() {
 
   const { hasUnseenPending: hasUnseenWorkOrders, acknowledge: acknowledgeWorkOrders } =
     usePendingAcknowledgment('work_orders', propertyId, pendingWorkOrderIds)
-  const { hasUnseenPending: hasUnseenTechnicians, acknowledge: acknowledgeTechnicians } =
-    usePendingAcknowledgment('technicians', propertyId, pendingTechnicianIds)
+  const hasUnseenTechnicians = false
+  const acknowledgeTechnicians = useCallback(() => {}, [])
   const { hasUnseenPending: hasUnseenTenants, acknowledge: acknowledgeTenants } =
     usePendingAcknowledgment('tenants', propertyId, pendingTenantIds)
 
