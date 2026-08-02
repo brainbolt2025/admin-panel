@@ -1,22 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Wrench, Mail, Check, X as XIcon, Calendar, Camera, Info, MapPin, Shield, Clock, Users, Download, Building2, MailCheck, ThumbsUp } from 'lucide-react';
+import {
+  Search,
+  Wrench,
+  Mail,
+  Check,
+  X as XIcon,
+  Camera,
+  Info,
+  MapPin,
+  Shield,
+  Clock,
+  Users,
+  UserPlus,
+  MailCheck,
+} from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
-import { usePendingWorkOrders } from '../context/PendingWorkOrdersContext';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchTechniciansQuery } from '../lib/pmQueries';
 import { invalidateTechniciansData } from '../lib/invalidatePmData';
 import AlertsBell from './AlertsBell';
+import { toUserFacingError } from '../lib/userFacingError';
 import {
   APPROVAL_STATUS,
   isApproved,
-  isPending,
   isRejected,
   normalizeApprovalStatus,
   type ApprovalStatus,
 } from '../lib/approvalStatus';
-import { toUserFacingError } from '../lib/userFacingError';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -43,18 +55,13 @@ const Technicians = ({
   onNavigateToTechnicians,
   onNavigateToTenants,
 }: TechniciansProps) => {
-  // Get user role from localStorage
   const getUserRole = () => {
     try {
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
-        if (user.user_metadata?.role) {
-          return user.user_metadata.role;
-        }
-        if (user.raw_user_meta_data?.role) {
-          return user.raw_user_meta_data.role;
-        }
+        if (user.user_metadata?.role) return user.user_metadata.role;
+        if (user.raw_user_meta_data?.role) return user.raw_user_meta_data.role;
       }
     } catch (error) {
       console.error('Error parsing user data:', error);
@@ -88,88 +95,58 @@ const Technicians = ({
     }
   }, [techniciansData?.profilePictureUrls]);
 
-  // State for search
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-
-  // State for confirmation modal
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<'approve' | 'reject' | null>(null);
-  const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null);
-
-  // State for details modal
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [technicianDetails, setTechnicianDetails] = useState<Technician | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
-
-  // State for profile picture upload
   const [uploadingProfilePicture, setUploadingProfilePicture] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { refreshPendingTechniciansCount } = usePendingWorkOrders();
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteStep, setInviteStep] = useState<'form' | 'confirm'>('form');
+  const [inviteForm, setInviteForm] = useState({ first_name: '', last_name: '', email: '' });
+  const [invitePropertyName, setInvitePropertyName] = useState<string | null>(null);
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<Technician | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+  const [notice, setNotice] = useState<{
+    title: string;
+    message: string;
+    tone: 'success' | 'error';
+  } | null>(null);
 
-  // Filter technicians based on search
   const filteredTechnicians = technicians.filter((technician) => {
-    const matchesSearch = 
-      technician.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      technician.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'All' || 
-      (statusFilter === 'Approved' && isApproved(technician.approved)) ||
-      (statusFilter === 'Pending' && isPending(technician.approved)) ||
-      (statusFilter === 'Rejected' && isRejected(technician.approved));
-    
-    return matchesSearch && matchesStatus;
+    const q = searchTerm.toLowerCase();
+    return (
+      technician.name?.toLowerCase().includes(q) ||
+      technician.email?.toLowerCase().includes(q)
+    );
   });
 
-  // Handle profile picture upload
   const handleProfilePictureUpload = async (technicianId: string, file: File) => {
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB');
-      return;
-    }
-
     setUploadingProfilePicture(technicianId);
-
     try {
       const supabaseClient = getAuthenticatedSupabase();
-      
-      // Generate unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `technician_${technicianId}_${Date.now()}.${fileExt}`;
-      const filePath = fileName;
 
-      // Upload to storage
       const { error: uploadError } = await supabaseClient.storage
         .from(PROFILE_PICTURES_BUCKET)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+        .upload(fileName, file, { upsert: true });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
-      // Update user record with profile picture URL
       const { error: updateError } = await supabaseClient
         .from('users')
-        .update({ profile_picture_url: filePath })
+        .update({ profile_picture_url: fileName })
         .eq('id', technicianId);
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
-      // Get signed URL for the new image
       const { data: signedData, error: signedError } = await supabaseClient.storage
         .from(PROFILE_PICTURES_BUCKET)
-        .createSignedUrl(filePath, 60 * 60 * 24);
+        .createSignedUrl(fileName, 60 * 60 * 24);
 
       if (!signedError && signedData?.signedUrl) {
         setProfilePictureUrls((prev) => ({
@@ -179,39 +156,35 @@ const Technicians = ({
       }
 
       invalidateTechniciansData(queryClient);
-      refreshPendingTechniciansCount();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error uploading profile picture:', err);
-      alert('Failed to upload profile picture. Please try again.');
+      setNotice({
+        title: 'Upload failed',
+        message: 'Failed to upload profile picture. Please try again.',
+        tone: 'error',
+      });
     } finally {
       setUploadingProfilePicture(null);
     }
   };
 
-  // Handle file input change
   const handleFileInputChange = (technicianId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      handleProfilePictureUpload(technicianId, file);
-    }
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (file) handleProfilePictureUpload(technicianId, file);
+    event.target.value = '';
   };
 
-  // Handle view details
   const handleViewDetails = async (technician: Technician) => {
     setLoadingDetails(true);
     setDetailsModalOpen(true);
-    
+
     try {
       const supabaseClient = getAuthenticatedSupabase();
-      
-      // Fetch full technician details
       const { data: technicianData, error } = await supabaseClient
         .from('users')
-        .select('id, name, email, role, approved, created_at, profile_picture_url, property_name, email_verified')
+        .select(
+          'id, name, email, role, approved, created_at, profile_picture_url, property_name, email_verified',
+        )
         .eq('id', technician.id)
         .single();
 
@@ -229,7 +202,6 @@ const Technicians = ({
         email_verified: technicianData.email_verified,
       };
 
-      // Get profile picture URL if available
       if (fullTechnician.profile_picture_url) {
         try {
           const { data: signedData, error: signedError } = await supabaseClient.storage
@@ -248,212 +220,240 @@ const Technicians = ({
       }
 
       setTechnicianDetails(fullTechnician);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching technician details:', err);
-      alert('Failed to load technician details. Please try again.');
+      setNotice({
+        title: 'Unable to load details',
+        message: 'Failed to load technician details. Please try again.',
+        tone: 'error',
+      });
       setDetailsModalOpen(false);
     } finally {
       setLoadingDetails(false);
     }
   };
 
-  // Format date
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     });
   };
 
-  // Format date for details (full format)
   const formatDateFull = (dateString: string | undefined) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
-  const handleApproveClick = (technician: Technician) => {
-    setSelectedTechnician(technician);
-    setConfirmAction('approve');
-    setConfirmModalOpen(true);
+  const resetInviteModal = () => {
+    setInviteModalOpen(false);
+    setInviteStep('form');
+    setInviteForm({ first_name: '', last_name: '', email: '' });
+    setInvitePropertyName(null);
+    setInviteError(null);
   };
 
-  const handleRejectClick = (technician: Technician) => {
-    setSelectedTechnician(technician);
-    setConfirmAction('reject');
-    setConfirmModalOpen(true);
+  const openInviteModal = () => {
+    setInviteError(null);
+    setInviteStep('form');
+    setInviteModalOpen(true);
   };
 
-  const handleApproveTechnician = async () => {
-    if (!selectedTechnician) return;
+  /** Step 1 → confirm screen (no email sent yet). */
+  const handleInviteFormContinue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteError(null);
+
+    const first = inviteForm.first_name.trim();
+    const last = inviteForm.last_name.trim();
+    const email = inviteForm.email.trim();
+    if (!first || !last || !email) {
+      setInviteError('First name, last name, and email are required.');
+      return;
+    }
 
     try {
       const supabaseClient = getAuthenticatedSupabase();
-
-      const { error } = await supabaseClient
-        .from('users')
-        .update({ approved: APPROVAL_STATUS.approved })
-        .eq('id', selectedTechnician.id);
-
-      if (error) {
-        console.error('Update error details:', error);
-        throw error;
-      }
-
-      invalidateTechniciansData(queryClient);
-      refreshPendingTechniciansCount();
-
-      // Send approval email
-      if (!selectedTechnician.email) {
-        console.warn('Technician has no email address, cannot send approval email');
-        setConfirmModalOpen(false);
-        setSelectedTechnician(null);
-        setConfirmAction(null);
+      const { data: userData } = await supabaseClient.auth.getUser();
+      if (!userData.user) {
+        setInviteError('User not found. Please log in again.');
         return;
       }
 
-      try {
-        const { data: userData } = await supabaseClient.auth.getUser();
+      const { data: pmData, error: pmError } = await supabaseClient
+        .from('users')
+        .select('property_id, property_name')
+        .eq('id', userData.user.id)
+        .eq('role', 'pm')
+        .maybeSingle();
 
-        if (!userData.user) {
-          console.error('User not found, cannot send approval email');
-          setConfirmModalOpen(false);
-          setSelectedTechnician(null);
-          setConfirmAction(null);
-          return;
-        }
-
-        const { data: pmData, error: pmError } = await supabaseClient
-          .from('users')
-          .select('property_id, property_name, name')
-          .eq('id', userData.user.id)
-          .eq('role', 'pm')
-          .single();
-
-        if (pmError) {
-          console.error('Error fetching PM info for technician approval email:', pmError);
-          // Continue anyway with undefined values
-        }
-
-        console.log('Sending approval email to:', selectedTechnician.email);
-        console.log('Email data:', {
-          email: selectedTechnician.email,
-          name: selectedTechnician.name,
-          propertyName: pmData?.property_name,
-          approvedBy: pmData?.name,
-        });
-
-        const accessToken = localStorage.getItem('access_token');
-        const response = await fetch(
-          `${config.supabase.url}/functions/v1/notify-technician-approval`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: accessToken
-                ? `Bearer ${accessToken}`
-                : `Bearer ${config.supabase.anonKey}`,
-              apikey: config.supabase.anonKey,
-            },
-            body: JSON.stringify({
-              email: selectedTechnician.email,
-              name: selectedTechnician.name || undefined,
-              propertyName: pmData?.property_name || undefined,
-              approvedBy: pmData?.name || undefined,
-            }),
-          }
-        );
-
-        const responseData = await response.json().catch(() => ({}));
-        console.log('Email service response:', response.status, responseData);
-
-        if (!response.ok) {
-          console.error('Failed to send technician approval email:', responseData);
-          // Don't fail the approval if email fails, but log it
-        } else {
-          console.log('Technician approval email sent successfully');
-        }
-      } catch (emailError) {
-        console.error('Error calling notify-technician-approval function:', emailError);
-        // Don't fail the approval if email fails
+      if (pmError || !pmData?.property_id) {
+        setInviteError('Could not resolve your property. Please try again.');
+        return;
       }
 
-      setConfirmModalOpen(false);
-      setSelectedTechnician(null);
-      setConfirmAction(null);
-    } catch (err: any) {
-      console.error('Error approving technician:', err);
-      alert('Failed to approve technician. Please try again.');
+      setInvitePropertyName(pmData.property_name || 'your property');
+      setInviteStep('confirm');
+    } catch (err) {
+      console.error('Error preparing invite confirmation:', err);
+      setInviteError('An error occurred. Please try again.');
     }
   };
 
-  const handleRejectTechnician = async () => {
-    if (!selectedTechnician) return;
+  /** Step 2 → actually create + email. */
+  const handleInviteConfirmSend = async () => {
+    setInviteError(null);
+    setIsInviting(true);
 
     try {
-      const supabaseClient = getAuthenticatedSupabase();
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        setInviteError('You are not authenticated. Please log in again.');
+        return;
+      }
 
+      const supabaseClient = getAuthenticatedSupabase();
+      const { data: userData } = await supabaseClient.auth.getUser();
+      if (!userData.user) {
+        setInviteError('User not found. Please log in again.');
+        return;
+      }
+
+      const { data: pmData, error: pmError } = await supabaseClient
+        .from('users')
+        .select('property_id, property_name')
+        .eq('id', userData.user.id)
+        .eq('role', 'pm')
+        .maybeSingle();
+
+      if (pmError || !pmData?.property_id) {
+        setInviteError('Could not resolve your property. Please try again.');
+        return;
+      }
+
+      const response = await fetch(`${config.supabase.url}/functions/v1/create-technician`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: config.supabase.anonKey,
+        },
+        body: JSON.stringify({
+          first_name: inviteForm.first_name.trim(),
+          last_name: inviteForm.last_name.trim(),
+          email: inviteForm.email.trim(),
+          property_id: pmData.property_id,
+          property_name: pmData.property_name || undefined,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        setInviteError(data.error || 'Failed to invite technician. Please try again.');
+        setInviteStep('form');
+        return;
+      }
+
+      resetInviteModal();
+      invalidateTechniciansData(queryClient);
+
+      if (data.email_sent === false) {
+        setNotice({
+          title: 'Technician created',
+          message:
+            'The account was created, but the invitation email may not have been sent. ' +
+            (data.email_error || 'Please contact support if they do not receive credentials.'),
+          tone: 'error',
+        });
+      } else {
+        setNotice({
+          title: 'Invitation sent',
+          message: 'The technician will receive login credentials by email.',
+          tone: 'success',
+        });
+      }
+    } catch (err) {
+      console.error('Error inviting technician:', err);
+      setInviteError('An error occurred. Please try again.');
+      setInviteStep('form');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleRevokeTechnician = async () => {
+    if (!revokeTarget) return;
+    setIsRevoking(true);
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
       const { error } = await supabaseClient
         .from('users')
         .update({ approved: APPROVAL_STATUS.rejected })
-        .eq('id', selectedTechnician.id);
+        .eq('id', revokeTarget.id)
+        .eq('role', 'technician');
 
-      if (error) {
-        console.error('Update error details:', error);
-        throw error;
-      }
+      if (error) throw error;
 
+      setRevokeTarget(null);
       invalidateTechniciansData(queryClient);
-      refreshPendingTechniciansCount();
-      setConfirmModalOpen(false);
-      setSelectedTechnician(null);
-      setConfirmAction(null);
-    } catch (err: any) {
-      console.error('Error updating technician approval:', err);
-      alert('Failed to update technician approval. Please try again.');
+      setNotice({
+        title: 'Technician revoked',
+        message: `${revokeTarget.name || 'This technician'} can no longer be assigned to work orders.`,
+        tone: 'success',
+      });
+    } catch (err) {
+      console.error('Error revoking technician:', err);
+      setNotice({
+        title: 'Revoke failed',
+        message: 'Could not revoke this technician. Please try again.',
+        tone: 'error',
+      });
+    } finally {
+      setIsRevoking(false);
     }
-  };
-
-  const handleCloseModal = () => {
-    setConfirmModalOpen(false);
-    setSelectedTechnician(null);
-    setConfirmAction(null);
   };
 
   return (
     <div className="p-6">
       <div className="bg-white rounded-xl shadow-sm">
-        {/* Topbar - Title and Alerts */}
         <div className="flex items-center justify-between px-6 py-4">
-          {/* Left side - Title */}
           <div className="flex items-center gap-2">
             <Users className="w-6 h-6 text-teal-600" />
             <h1 className="text-2xl font-bold text-gray-900">Technicians</h1>
           </div>
 
-          {/* Right side - Alerts (for PM only) */}
-          {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
-            <AlertsBell
-              onNavigateToWorkOrder={onNavigateToWorkOrder}
-              onNavigateToTechnicians={onNavigateToTechnicians}
-              onNavigateToTenants={onNavigateToTenants}
-            />
-          )}
+          <div className="flex items-center gap-3">
+            {isPM && (
+              <button
+                type="button"
+                onClick={openInviteModal}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+              >
+                <UserPlus className="w-4 h-4" />
+                Invite Technician
+              </button>
+            )}
+            {isPM && onNavigateToWorkOrder && onNavigateToTechnicians && onNavigateToTenants && (
+              <AlertsBell
+                onNavigateToWorkOrder={onNavigateToWorkOrder}
+                onNavigateToTechnicians={onNavigateToTechnicians}
+                onNavigateToTenants={onNavigateToTenants}
+              />
+            )}
+          </div>
         </div>
 
-        {/* Content Section */}
         <div className="px-6 pb-6">
-          {/* Search */}
-          <div className="relative mb-4">
+          <div className="relative mb-6">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-gray-400" />
             </div>
@@ -466,331 +466,389 @@ const Technicians = ({
             />
           </div>
 
-          {/* Status Filter Tabs */}
-          <div className="mb-6 flex items-center gap-2">
-            <span className="text-sm text-gray-500 mr-1">Status:</span>
-            {['All', 'Approved', 'Pending', 'Rejected'].map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  statusFilter === status
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-
-          {/* Technicians Table */}
           <div className="overflow-hidden">
-        {loadingTechnicians ? (
-          <div className="text-center py-12">
-            <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-500">Loading technicians...</p>
-          </div>
-        ) : errorTechnicians ? (
-          <div className="text-center py-12">
-            <p className="text-red-500">{errorTechnicians}</p>
-          </div>
-        ) : filteredTechnicians.length === 0 ? (
-          technicians.length === 0 ? (
-            <div className="relative overflow-hidden py-12 px-6">
-              {/* Decorative blobs */}
-              <div className="pointer-events-none absolute -top-8 -right-8 w-48 h-48 bg-teal-100/50 rounded-full blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-10 -left-10 w-56 h-56 bg-teal-100/40 rounded-full blur-2xl" />
-              {/* Decorative dotted grids */}
-              <div
-                className="pointer-events-none absolute top-6 right-10 w-24 h-16 opacity-40"
-                style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
-              />
-              <div
-                className="pointer-events-none absolute bottom-6 left-8 w-28 h-16 opacity-40"
-                style={{ backgroundImage: 'radial-gradient(#99f6e4 1.5px, transparent 1.5px)', backgroundSize: '10px 10px' }}
-              />
-
-              <div className="relative max-w-2xl mx-auto text-center">
-                {/* Illustration */}
-                <svg
-                  className="w-28 h-28 mx-auto mb-5"
-                  viewBox="0 0 120 120"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  role="img"
-                  aria-label="No technicians"
-                >
-                  <ellipse cx="58" cy="72" rx="46" ry="30" fill="#CCFBF1" />
-                  {/* Phone / notepad */}
-                  <rect x="60" y="34" width="34" height="52" rx="7" fill="#FFFFFF" stroke="#0F766E" strokeWidth="3" />
-                  <rect x="67" y="41" width="20" height="3.5" rx="1.75" fill="#5EEAD4" />
-                  <rect x="67" y="49" width="14" height="3.5" rx="1.75" fill="#5EEAD4" />
-                  {/* Check badge */}
-                  <circle cx="77" cy="70" r="12" fill="#0F766E" />
-                  <path d="M71.5 70.5l3.5 3.5 6-7" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                  {/* Wrench */}
-                  <g stroke="#14B8A6" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="#14B8A6">
-                    <path
-                      d="M41 44a10 10 0 0 0-12.8 12.2L20 64.5a5 5 0 0 0 0 7l1.5 1.5a5 5 0 0 0 7 0l8.3-8.2A10 10 0 0 0 49 52l-6.2 6.2-5.6-5.6L43.4 46.4A10 10 0 0 0 41 44z"
-                      fill="#5EEAD4"
-                      stroke="#0F766E"
-                    />
-                  </g>
-                  {/* Sparkles */}
-                  <path d="M100 28l0 8M96 32l8 0" stroke="#0F766E" strokeWidth="2.5" strokeLinecap="round" />
-                </svg>
-
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">No technicians yet</h3>
-                <p className="text-gray-500 mb-8">
-                  Technicians add themselves to your property from the Asine mobile app.
-                </p>
-
-                {/* Two columns */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                  <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Why you see this</h4>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      Technicians manage their own accounts and sign up in the Asine mobile
-                      app. They won&apos;t appear here until they register for your property.
+            {loadingTechnicians ? (
+              <div className="text-center py-12">
+                <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-gray-500">Loading technicians...</p>
+              </div>
+            ) : errorTechnicians ? (
+              <div className="text-center py-12">
+                <p className="text-red-500">{errorTechnicians}</p>
+              </div>
+            ) : filteredTechnicians.length === 0 ? (
+              technicians.length === 0 ? (
+                <div className="relative overflow-hidden py-12 px-6">
+                  <div className="relative max-w-xl mx-auto text-center">
+                    <Wrench className="w-14 h-14 text-teal-600 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">No technicians yet</h3>
+                    <p className="text-gray-500 mb-6">
+                      Invite a technician with their name and email. They&apos;ll get a temporary
+                      password and a link to open the Asine app.
                     </p>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900 mb-3">How to add a technician</h4>
-                    <ol className="space-y-3">
-                      <li className="flex items-center gap-3 text-sm text-gray-700">
-                        <span className="text-gray-400 font-medium">1.</span>
-                        <Download className="w-4 h-4 text-teal-600 shrink-0" />
-                        Download the app from the App Store
-                      </li>
-                      <li className="flex items-center gap-3 text-sm text-gray-700">
-                        <span className="text-gray-400 font-medium">2.</span>
-                        <Building2 className="w-4 h-4 text-teal-600 shrink-0" />
-                        Select your property during sign up
-                      </li>
-                      <li className="flex items-center gap-3 text-sm text-gray-700">
-                        <span className="text-gray-400 font-medium">3.</span>
-                        <MailCheck className="w-4 h-4 text-teal-600 shrink-0" />
-                        Verify their email address
-                      </li>
-                      <li className="flex items-center gap-3 text-sm text-gray-700">
-                        <span className="text-gray-400 font-medium">4.</span>
-                        <ThumbsUp className="w-4 h-4 text-teal-600 shrink-0" />
-                        Approve them here once they appear
-                      </li>
-                    </ol>
+                    {isPM && (
+                      <button
+                        type="button"
+                        onClick={openInviteModal}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Invite Technician
+                      </button>
+                    )}
                   </div>
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No technicians match your filters</p>
-            </div>
-          )
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Technician</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Email</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Date Added</th>
-                  <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredTechnicians.map((technician) => (
-                  <tr key={technician.id} className="hover:bg-gray-50">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center">
-                        <div className="relative group">
-                          {profilePictureUrls[technician.id] ? (
-                            <img
-                              src={profilePictureUrls[technician.id]}
-                              alt={technician.name || 'Technician'}
-                              className="w-10 h-10 rounded-full object-cover mr-3"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center mr-3">
-                              <Wrench className="w-5 h-5 text-teal-600" />
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No technicians match your search</p>
+                </div>
+              )
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Technician
+                      </th>
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Email
+                      </th>
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Email status
+                      </th>
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Access
+                      </th>
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Date Added
+                      </th>
+                      <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredTechnicians.map((technician) => (
+                      <tr key={technician.id} className="hover:bg-gray-50">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="relative group">
+                              {profilePictureUrls[technician.id] ? (
+                                <img
+                                  src={profilePictureUrls[technician.id]}
+                                  alt={technician.name || 'Technician'}
+                                  className="w-10 h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
+                                  <Wrench className="w-5 h-5 text-teal-600" />
+                                </div>
+                              )}
+                              <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleFileInputChange(technician.id, e)}
+                                id={`profile-upload-${technician.id}`}
+                              />
+                              <label
+                                htmlFor={`profile-upload-${technician.id}`}
+                                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full cursor-pointer transition-opacity opacity-0 group-hover:opacity-100"
+                                title="Upload profile picture"
+                              >
+                                {uploadingProfilePicture === technician.id ? (
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Camera className="w-4 h-4 text-white" />
+                                )}
+                              </label>
                             </div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {technician.name || 'N/A'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-600">
+                          <div className="flex items-center">
+                            <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                            {technician.email || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          {technician.email_verified ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
+                              <MailCheck className="w-3 h-3" />
+                              Verified
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-xs font-medium">
+                              <Mail className="w-3 h-3" />
+                              Pending verify
+                            </span>
                           )}
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => handleFileInputChange(technician.id, e)}
-                            id={`profile-upload-${technician.id}`}
-                          />
-                          <label
-                            htmlFor={`profile-upload-${technician.id}`}
-                            className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-50 rounded-full cursor-pointer transition-opacity opacity-0 group-hover:opacity-100"
-                            title="Upload profile picture"
-                          >
-                            {uploadingProfilePicture === technician.id ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                              <Camera className="w-4 h-4 text-white" />
-                            )}
-                          </label>
-                        </div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {technician.name || 'N/A'}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-sm text-gray-600">
-                      <div className="flex items-center">
-                        <Mail className="w-4 h-4 mr-2 text-gray-400" />
-                        {technician.email || 'N/A'}
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      {isApproved(technician.approved) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
-                          <Check className="w-3 h-3" />
-                          Approved
-                        </span>
-                      ) : isRejected(technician.approved) ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
-                          <XIcon className="w-3 h-3" />
-                          Rejected
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-md text-xs font-medium">
-                          <Calendar className="w-3 h-3" />
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6 text-sm text-gray-600">
-                      {formatDate(technician.created_at)}
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => handleViewDetails(technician)}
-                          className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
-                        >
-                          <Info className="w-3 h-3" />
-                          Details
-                        </button>
-                        {isPending(technician.approved) ? (
-                          <>
-                            <button
-                              onClick={() => handleApproveClick(technician)}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
-                            >
-                              <Check className="w-3 h-3" />
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleRejectClick(technician)}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
-                            >
+                        </td>
+                        <td className="py-4 px-6">
+                          {isRejected(technician.approved) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
                               <XIcon className="w-3 h-3" />
-                              Reject
+                              Revoked
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
+                              <Check className="w-3 h-3" />
+                              Active
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-600">
+                          {formatDate(technician.created_at)}
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => handleViewDetails(technician)}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+                            >
+                              <Info className="w-3 h-3" />
+                              Details
                             </button>
-                          </>
-                        ) : isApproved(technician.approved) ? (
-                          <button
-                            onClick={() => handleRejectClick(technician)}
-                            className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
-                          >
-                            <XIcon className="w-3 h-3" />
-                            Revoke
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleApproveClick(technician)}
-                            className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-green-600 text-white hover:bg-green-700 rounded transition-colors"
-                          >
-                            <Check className="w-3 h-3" />
-                            Approve
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                            {isApproved(technician.approved) && (
+                              <button
+                                onClick={() => setRevokeTarget(technician)}
+                                className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+                              >
+                                <XIcon className="w-3 h-3" />
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Confirmation Modal */}
-      {confirmModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 p-6">
-            {/* Modal Header */}
+      {/* Notice Modal */}
+      {notice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  notice.tone === 'success' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'
+                }`}
+              >
+                {notice.tone === 'success' ? (
+                  <Check className="w-5 h-5" />
+                ) : (
+                  <XIcon className="w-5 h-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-gray-900">{notice.title}</h2>
+                <p className="mt-1 text-sm text-gray-600 leading-relaxed">{notice.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setNotice(null)}
+                className="px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invite Modal */}
+      {inviteModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
-                {confirmAction === 'approve' ? 'Approve Technician' : 'Reject Technician'}
+                {inviteStep === 'form' ? 'Invite Technician' : 'Confirm invitation'}
               </h2>
               <button
-                onClick={handleCloseModal}
+                type="button"
+                onClick={() => !isInviting && resetInviteModal()}
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <XIcon className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="mb-6">
-              <p className="text-gray-700 mb-4">
-                {confirmAction === 'approve' 
-                  ? 'Approve this technician so they can start receiving assignments.'
-                  : 'Rejecting will prevent this technician from being assigned work orders.'}
-              </p>
-              {selectedTechnician && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center mb-2">
-                    <Wrench className="w-5 h-5 text-teal-600 mr-2" />
-                    <span className="font-medium text-gray-900">
-                      {selectedTechnician.name || 'N/A'}
-                    </span>
+            {inviteStep === 'form' ? (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  We&apos;ll create their account, email a temporary password, and a link to open
+                  the app.
+                </p>
+                <form onSubmit={handleInviteFormContinue} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        First name
+                      </label>
+                      <input
+                        required
+                        name="first_name"
+                        value={inviteForm.first_name}
+                        onChange={(e) =>
+                          setInviteForm((prev) => ({ ...prev, first_name: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Last name
+                      </label>
+                      <input
+                        required
+                        name="last_name"
+                        value={inviteForm.last_name}
+                        onChange={(e) =>
+                          setInviteForm((prev) => ({ ...prev, last_name: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <Mail className="w-4 h-4 text-gray-400 mr-2" />
-                    <span className="text-sm text-gray-600">
-                      {selectedTechnician.email || 'N/A'}
-                    </span>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      required
+                      type="email"
+                      name="email"
+                      value={inviteForm.email}
+                      onChange={(e) =>
+                        setInviteForm((prev) => ({ ...prev, email: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
                   </div>
+                  {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={resetInviteModal}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  Double-check these details before we create the account and send the email.
+                </p>
+                <div className="rounded-lg border border-teal-100 bg-teal-50/60 p-4 space-y-2 mb-4">
+                  <p className="text-sm text-gray-800">
+                    <span className="font-medium text-gray-500">Name:</span>{' '}
+                    {inviteForm.first_name.trim()} {inviteForm.last_name.trim()}
+                  </p>
+                  <p className="text-sm text-gray-800 break-all">
+                    <span className="font-medium text-gray-500">Email:</span>{' '}
+                    {inviteForm.email.trim()}
+                  </p>
+                  <p className="text-sm text-gray-800">
+                    <span className="font-medium text-gray-500">Property:</span>{' '}
+                    {invitePropertyName || 'your property'}
+                  </p>
                 </div>
-              )}
-            </div>
+                {inviteError && <p className="text-sm text-red-600 mb-3">{inviteError}</p>}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    disabled={isInviting}
+                    onClick={() => {
+                      setInviteError(null);
+                      setInviteStep('form');
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isInviting}
+                    onClick={() => void handleInviteConfirmSend()}
+                    className="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+                  >
+                    {isInviting ? 'Sending…' : 'Send invitation'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
-            {/* Modal Actions */}
+      {/* Revoke confirmation */}
+      {revokeTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Revoke technician</h2>
+              <button
+                type="button"
+                disabled={isRevoking}
+                onClick={() => setRevokeTarget(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              This removes{' '}
+              <span className="font-medium text-gray-900">
+                {revokeTarget.name || 'this technician'}
+              </span>{' '}
+              from your assignment list. They will no longer receive new work orders.
+            </p>
+            <div className="rounded-lg bg-gray-50 p-3 mb-4 text-sm text-gray-700">
+              <div className="flex items-center gap-2 mb-1">
+                <Wrench className="w-4 h-4 text-teal-600" />
+                {revokeTarget.name || 'N/A'}
+              </div>
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-gray-400" />
+                {revokeTarget.email || 'N/A'}
+              </div>
+            </div>
             <div className="flex gap-3">
               <button
-                onClick={handleCloseModal}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                type="button"
+                disabled={isRevoking}
+                onClick={() => setRevokeTarget(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={confirmAction === 'approve' ? handleApproveTechnician : handleRejectTechnician}
-                className={`flex-1 px-4 py-2 text-white rounded-lg transition-colors ${
-                  confirmAction === 'approve'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                type="button"
+                disabled={isRevoking}
+                onClick={() => void handleRevokeTechnician()}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                {confirmAction === 'approve' ? (
-                  <>
-                    <Check className="w-4 h-4 inline mr-2" />
-                    Approve
-                  </>
-                ) : (
-                  <>
-                    <XIcon className="w-4 h-4 inline mr-2" />
-                    Reject
-                  </>
-                )}
+                {isRevoking ? 'Revoking…' : 'Revoke'}
               </button>
             </div>
           </div>
@@ -803,12 +861,11 @@ const Technicians = ({
           <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {loadingDetails ? (
               <div className="p-12 text-center">
-                <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                 <p className="text-gray-500">Loading details...</p>
               </div>
             ) : technicianDetails ? (
               <>
-                {/* Modal Header */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-200">
                   <h2 className="text-2xl font-bold text-gray-900">Technician Details</h2>
                   <button
@@ -822,10 +879,8 @@ const Technicians = ({
                   </button>
                 </div>
 
-                {/* Modal Content */}
                 <div className="p-6">
                   <div className="flex flex-col md:flex-row gap-6 mb-6">
-                    {/* Profile Picture */}
                     <div className="flex-shrink-0">
                       {profilePictureUrls[technicianDetails.id] ? (
                         <img
@@ -839,59 +894,58 @@ const Technicians = ({
                         </div>
                       )}
                     </div>
-
-                    {/* Basic Info */}
-                    <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    <div className="flex-1 space-y-3">
+                      <h3 className="text-xl font-bold text-gray-900">
                         {technicianDetails.name || 'N/A'}
                       </h3>
-                      <div className="space-y-2">
-                        <div className="flex items-center text-gray-600">
-                          <Mail className="w-4 h-4 mr-2 text-gray-400" />
-                          <span>{technicianDetails.email || 'N/A'}</span>
-                          {technicianDetails.email_verified && (
-                            <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                              Verified
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center text-gray-600">
-                          <Shield className="w-4 h-4 mr-2 text-gray-400" />
-                          <span className="capitalize">{technicianDetails.role || 'N/A'}</span>
-                        </div>
-                        <div className="flex items-center">
-                          {isApproved(technicianDetails.approved) ? (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
-                              <Check className="w-4 h-4" />
-                              Approved
-                            </span>
-                          ) : isRejected(technicianDetails.approved) ? (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium">
-                              <XIcon className="w-4 h-4" />
-                              Rejected
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-md text-sm font-medium">
-                              <Calendar className="w-4 h-4" />
-                              Pending Approval
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex items-center text-gray-600">
+                        <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                        <span>{technicianDetails.email || 'N/A'}</span>
+                        {technicianDetails.email_verified && (
+                          <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                            Verified
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center text-gray-600">
+                        <Shield className="w-4 h-4 mr-2 text-gray-400" />
+                        <span className="capitalize">{technicianDetails.role || 'N/A'}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {technicianDetails.email_verified ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
+                            <Check className="w-4 h-4" />
+                            Email verified
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 rounded-md text-sm font-medium">
+                            <Mail className="w-4 h-4" />
+                            Awaiting email verification
+                          </span>
+                        )}
+                        {isRejected(technicianDetails.approved) ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium">
+                            <XIcon className="w-4 h-4" />
+                            Revoked
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-md text-sm font-medium">
+                            <Check className="w-4 h-4" />
+                            Active
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Detailed Information */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-gray-200">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
-                          Property
-                        </label>
-                        <div className="flex items-center text-gray-900">
-                          <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                          <span>{technicianDetails.property_name || 'N/A'}</span>
-                        </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                        Property
+                      </label>
+                      <div className="flex items-center text-gray-900">
+                        <MapPin className="w-4 h-4 mr-2 text-gray-400" />
+                        <span>{technicianDetails.property_name || 'N/A'}</span>
                       </div>
                     </div>
                     <div className="space-y-4">
@@ -916,7 +970,6 @@ const Technicians = ({
                   </div>
                 </div>
 
-                {/* Modal Footer */}
                 <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
                   <button
                     onClick={() => {
@@ -927,28 +980,15 @@ const Technicians = ({
                   >
                     Close
                   </button>
-                  {!isApproved(technicianDetails.approved) && (
+                  {isApproved(technicianDetails.approved) && (
                     <button
                       onClick={() => {
                         setDetailsModalOpen(false);
-                        handleApproveClick(technicianDetails);
-                      }}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <Check className="w-4 h-4 inline mr-2" />
-                      Approve Technician
-                    </button>
-                  )}
-                  {!isRejected(technicianDetails.approved) && (
-                    <button
-                      onClick={() => {
-                        setDetailsModalOpen(false);
-                        handleRejectClick(technicianDetails);
+                        setRevokeTarget(technicianDetails);
                       }}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                     >
-                      <XIcon className="w-4 h-4 inline mr-2" />
-                      {isApproved(technicianDetails.approved) ? 'Revoke' : 'Reject'} Technician
+                      Revoke technician
                     </button>
                   )}
                 </div>
@@ -957,8 +997,6 @@ const Technicians = ({
           </div>
         </div>
       )}
-        </div>
-      </div>
     </div>
   );
 };

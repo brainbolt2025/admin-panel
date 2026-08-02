@@ -9,8 +9,6 @@ export function invalidateWorkOrdersData(queryClient: QueryClient) {
 
 export function invalidateTechniciansData(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: queryKeys.technicians })
-  void queryClient.invalidateQueries({ queryKey: ['pendingIds', 'technicians'] })
-  void queryClient.refetchQueries({ queryKey: ['pendingIds', 'technicians'] })
 }
 
 export function invalidateTenantsData(queryClient: QueryClient) {

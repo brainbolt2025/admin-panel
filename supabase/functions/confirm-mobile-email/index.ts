@@ -170,19 +170,39 @@ serve(async (req) => {
       error_code?: string
     }
 
+    // How long after Auth confirmation a spent-token click may still deep-link.
+    // Covers mail-scanner prefetches; stops indefinite replay of old emails.
+    const IDEMPOTENT_REDIRECT_WINDOW_MS = 24 * 60 * 60 * 1000
+
     if (!verifyResponse.ok) {
       console.error('Auth verify failed:', verifyResponse.status, verifyPayload)
 
       // Token already used (scanner / double-open) but Auth may already be confirmed —
-      // still sync email_verified and redirect so Android can open the app.
+      // still sync email_verified and redirect within a bounded window.
       if (hintUserId) {
         const { data: authData, error: authLookupError } =
           await supabaseAdmin.auth.admin.getUserById(hintUserId)
         if (authLookupError) {
           console.warn('Idempotent lookup failed:', authLookupError.message)
         } else if (authData.user?.email_confirmed_at) {
-          console.log('♻️ Token spent but Auth confirmed — idempotent redirect:', hintUserId)
-          return await finishVerified(hintUserId, true)
+          const confirmedAt = Date.parse(authData.user.email_confirmed_at)
+          const ageMs = Number.isFinite(confirmedAt) ? Date.now() - confirmedAt : NaN
+          if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= IDEMPOTENT_REDIRECT_WINDOW_MS) {
+            console.log('♻️ Token spent but Auth confirmed (within window) — idempotent redirect:', {
+              userId: hintUserId,
+              ageHours: Math.round((ageMs / 3600000) * 10) / 10,
+            })
+            return await finishVerified(hintUserId, true)
+          }
+          console.warn('♻️ Token spent; Auth confirmed but outside redirect window:', {
+            userId: hintUserId,
+            email_confirmed_at: authData.user.email_confirmed_at,
+            ageMs,
+          })
+          return htmlError(
+            'This verification link is no longer valid. If you already verified, open the Asine app and sign in. Otherwise request a new verification email.',
+            400,
+          )
         }
       }
 
