@@ -8,6 +8,7 @@ interface UserProfile {
   id: string;
   name: string | null;
   email: string | null;
+  pending_email?: string | null;
   role: string | null;
   property_id: string | null;
   property_name?: string | null;
@@ -30,6 +31,12 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [reactivating, setReactivating] = useState(false);
   const [reactivateError, setReactivateError] = useState<string | null>(null);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [confirmNewEmail, setConfirmNewEmail] = useState('');
+  const [emailChangeLoading, setEmailChangeLoading] = useState(false);
+  const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
+  const [emailChangeNotice, setEmailChangeNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -46,7 +53,9 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         // Get user profile from users table
         const { data: userProfile, error: profileError } = await supabaseClient
           .from('users')
-          .select('id, name, email, role, property_id, created_at, subscription_status, plan, cancel_at, email_verified')
+          .select(
+            'id, name, email, pending_email, role, property_id, created_at, subscription_status, plan, cancel_at, email_verified',
+          )
           .eq('id', user.id)
           .single();
 
@@ -222,6 +231,96 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
     }
   };
 
+  const handleRequestEmailChange = async () => {
+    setEmailChangeError(null);
+    setEmailChangeNotice(null);
+
+    const trimmed = newEmail.trim().toLowerCase();
+    const confirmed = confirmNewEmail.trim().toLowerCase();
+    if (!trimmed || !confirmed) {
+      setEmailChangeError('Enter and confirm your new email address.');
+      return;
+    }
+    if (trimmed !== confirmed) {
+      setEmailChangeError('Email addresses do not match.');
+      return;
+    }
+
+    setEmailChangeLoading(true);
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(config.api.updateUserEmail, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ new_email: trimmed }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to start email change');
+      }
+
+      setProfile((prev) =>
+        prev ? { ...prev, pending_email: result.pending_email || trimmed } : prev,
+      );
+      setEditingEmail(false);
+      setNewEmail('');
+      setConfirmNewEmail('');
+      setEmailChangeNotice(
+        result.message ||
+          'Confirmation email sent. Your login email changes after you click the link.',
+      );
+    } catch (err) {
+      console.error('Error requesting email change:', err);
+      setEmailChangeError(toUserFacingError(err, 'Unable to update email. Please try again.'));
+    } finally {
+      setEmailChangeLoading(false);
+    }
+  };
+
+  const handleCancelPendingEmail = async () => {
+    setEmailChangeError(null);
+    setEmailChangeNotice(null);
+    setEmailChangeLoading(true);
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(config.api.updateUserEmail, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ cancel: true }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to cancel pending email change');
+      }
+
+      setProfile((prev) => (prev ? { ...prev, pending_email: null } : prev));
+      setEmailChangeNotice('Pending email change cancelled.');
+    } catch (err) {
+      console.error('Error cancelling pending email:', err);
+      setEmailChangeError(toUserFacingError(err, 'Unable to cancel. Please try again.'));
+    } finally {
+      setEmailChangeLoading(false);
+    }
+  };
+
   const handleReactivateSubscription = async () => {
     setReactivating(true);
     setReactivateError(null);
@@ -289,13 +388,107 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
               <div className="p-2 bg-teal-100 rounded-lg">
                 <Mail className="w-5 h-5 text-teal-600" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-500 mb-1">Email Address</p>
-                <p className="text-gray-800 font-medium">{profile.email || 'N/A'}</p>
-                {profile.role === 'pm' && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Please verify this email address is correct. You won't receive important notifications if it's incorrect.
-                  </p>
+                <p className="text-gray-800 font-medium break-all">{profile.email || 'N/A'}</p>
+
+                {profile.role === 'pm' && profile.pending_email && (
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-900">
+                      Pending change to <strong className="break-all">{profile.pending_email}</strong>.
+                      Check that inbox and click the confirmation link (expires in 24 hours).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCancelPendingEmail}
+                      disabled={emailChangeLoading}
+                      className="mt-2 text-sm font-medium text-amber-800 hover:text-amber-950 underline disabled:opacity-50"
+                    >
+                      {emailChangeLoading ? 'Cancelling…' : 'Cancel pending change'}
+                    </button>
+                  </div>
+                )}
+
+                {profile.role === 'pm' && !editingEmail && !profile.pending_email && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingEmail(true);
+                      setEmailChangeError(null);
+                      setEmailChangeNotice(null);
+                      setNewEmail('');
+                      setConfirmNewEmail('');
+                    }}
+                    className="mt-2 text-sm font-medium text-teal-700 hover:text-teal-900"
+                  >
+                    Change email
+                  </button>
+                )}
+
+                {profile.role === 'pm' && editingEmail && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1" htmlFor="new-email">
+                        New email
+                      </label>
+                      <input
+                        id="new-email"
+                        type="email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1" htmlFor="confirm-new-email">
+                        Confirm new email
+                      </label>
+                      <input
+                        id="confirm-new-email"
+                        type="email"
+                        value={confirmNewEmail}
+                        onChange={(e) => setConfirmNewEmail(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      We’ll email a confirmation link to the new address. Your login email only changes after you click it.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRequestEmailChange}
+                        disabled={emailChangeLoading}
+                        className="bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium py-2 px-4 rounded-lg disabled:opacity-50"
+                      >
+                        {emailChangeLoading ? 'Sending…' : 'Send confirmation'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEmail(false);
+                          setEmailChangeError(null);
+                          setNewEmail('');
+                          setConfirmNewEmail('');
+                        }}
+                        disabled={emailChangeLoading}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-medium py-2 px-4 rounded-lg disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {emailChangeError && (
+                  <p className="mt-2 text-sm text-red-700">{emailChangeError}</p>
+                )}
+                {emailChangeNotice && (
+                  <p className="mt-2 text-sm text-green-700">{emailChangeNotice}</p>
                 )}
               </div>
             </div>

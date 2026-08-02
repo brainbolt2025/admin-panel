@@ -310,7 +310,9 @@ function App() {
         if (response.ok && data.success) {
           setEmailVerificationNotice({
             type: 'success',
-            text: 'Email verified successfully.',
+            text: data.email_changed
+              ? `Email updated to ${data.new_email || 'your new address'}. Use it next time you sign in.`
+              : 'Email verified successfully.',
           })
           const {
             data: { session },

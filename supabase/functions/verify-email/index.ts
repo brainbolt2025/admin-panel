@@ -64,11 +64,12 @@ serve(async (req) => {
     // Note: This assumes you have a verification_token column in your users table
     // If you're using a different approach, adjust accordingly
     
-    // Option 1: If you have verification_token column (recommended)
-    // First, try to find user by verification_token
+    // Find user by verification_token (signup verify OR pending email change)
     const { data: userData, error: findError } = await supabaseAdmin
       .from('users')
-      .select('id, email, email_verified, verification_token')
+      .select(
+        'id, email, email_verified, verification_token, verification_token_expires_at, pending_email',
+      )
       .eq('verification_token', token)
       .maybeSingle()
 
@@ -142,7 +143,125 @@ serve(async (req) => {
       )
     }
 
-    // Check if already verified
+    // Expire spent / stale tokens
+    if (userData.verification_token_expires_at) {
+      const expiresAt = Date.parse(userData.verification_token_expires_at)
+      if (Number.isFinite(expiresAt) && Date.now() > expiresAt) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'This verification link has expired. Please request a new one.',
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+    }
+
+    const pendingEmail =
+      typeof userData.pending_email === 'string' && userData.pending_email.trim()
+        ? userData.pending_email.trim().toLowerCase()
+        : null
+
+    // --- Email change confirmation (verify-then-switch) ---
+    if (pendingEmail) {
+      const { data: conflict } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', pendingEmail)
+        .neq('id', userData.id)
+        .maybeSingle()
+
+      if (conflict) {
+        await supabaseAdmin
+          .from('users')
+          .update({
+            pending_email: null,
+            verification_token: null,
+            verification_token_expires_at: null,
+          })
+          .eq('id', userData.id)
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'That email is already in use. Request a different address from Profile.',
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      const { error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+        userData.id,
+        {
+          email: pendingEmail,
+          email_confirm: true,
+        },
+      )
+
+      if (authUpdateError) {
+        console.error('Failed to update Auth email:', authUpdateError)
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Failed to update login email. Please try again or request a new link.',
+            details: authUpdateError.message,
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('users')
+        .update({
+          email: pendingEmail,
+          pending_email: null,
+          email_verified: true,
+          verification_token: null,
+          verification_token_expires_at: null,
+        })
+        .eq('id', userData.id)
+
+      if (updateError) {
+        console.error('Error applying pending email on users row:', updateError)
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Login email was updated but profile sync failed. Contact support.',
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      console.log('✅ Email changed successfully for user:', userData.id, '→', pendingEmail)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          email_changed: true,
+          new_email: pendingEmail,
+          message: 'Email updated successfully. Use your new address to sign in.',
+          user_id: userData.id,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
+
+    // --- Initial signup verification ---
     if (userData.email_verified) {
       return new Response(
         JSON.stringify({
@@ -153,16 +272,15 @@ serve(async (req) => {
         {
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        },
       )
     }
 
-    // Update user: mark email as verified and clear verification token
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({
         email_verified: true,
-        verification_token: null, // Clear token after verification
+        verification_token: null,
         verification_token_expires_at: null,
       })
       .eq('id', userData.id)
@@ -177,11 +295,10 @@ serve(async (req) => {
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        },
       )
     }
 
-    // Also update Supabase Auth email confirmation status
     try {
       await supabaseAdmin.auth.admin.updateUserById(userData.id, {
         email_confirm: true,
@@ -189,7 +306,6 @@ serve(async (req) => {
       console.log('Updated Supabase Auth email confirmation status')
     } catch (authError) {
       console.warn('Could not update Auth email confirmation:', authError)
-      // Don't fail if this doesn't work - user table update is primary
     }
 
     console.log('✅ Email verified successfully for user:', userData.id)
@@ -203,7 +319,7 @@ serve(async (req) => {
       {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      },
     )
   } catch (error) {
     console.error('Error verifying email:', error)
