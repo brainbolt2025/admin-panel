@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -9,107 +9,296 @@ const corsHeaders = {
 }
 
 interface UpdateEmailRequest {
-  user_id: string
   new_email: string
-  confirm_email?: boolean // If true, mark email as confirmed without requiring verification
+  /** Cancel a pending email change instead of starting a new one */
+  cancel?: boolean
+}
+
+function siteOrigin(): string {
+  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY') || ''
+  const isTestMode = stripeKey.startsWith('sk_test_')
+  const configured =
+    Deno.env.get('SITE_URL') || Deno.env.get('APP_URL') || Deno.env.get('BASE_URL') || ''
+  if (configured) return configured.replace(/\/+$/, '')
+  return isTestMode ? 'http://localhost:5173' : 'https://www.sycnmore.com'
+}
+
+async function sendConfirmEmail(opts: {
+  to: string
+  name: string
+  confirmLink: string
+}): Promise<{ ok: boolean; error?: string; mailgun_id?: string }> {
+  const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || 'mg.asine.app'
+  const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
+  const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
+
+  if (!MAILGUN_API_KEY) {
+    return { ok: false, error: 'Mailgun API key not configured' }
+  }
+
+  const htmlBody = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #0f766e; margin-bottom: 20px;">Confirm your new email</h2>
+        <p>Hi ${opts.name},</p>
+        <p>You requested to change your Asine Property Manager email to <strong>${opts.to}</strong>.</p>
+        <p>Click the button below to confirm. Your login email will only change after you confirm.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${opts.confirmLink}"
+            style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
+            Confirm new email
+          </a>
+        </div>
+        <p style="color: #666; font-size: 14px;">This link expires in 24 hours. If you did not request this change, you can ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #999; font-size: 12px;">
+          If the button doesn't work, copy and paste this link:<br>
+          <a href="${opts.confirmLink}" style="color: #0f766e; word-break: break-all;">${opts.confirmLink}</a>
+        </p>
+      </body>
+    </html>
+  `
+
+  const formData = new FormData()
+  formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)
+  formData.append('to', opts.to)
+  formData.append('subject', 'Confirm your new Asine email address')
+  formData.append('html', htmlBody)
+  formData.append(
+    'text',
+    `Confirm your new email\n\nHi ${opts.name},\n\nConfirm changing your Asine email to ${opts.to}:\n${opts.confirmLink}\n\nThis link expires in 24 hours.`,
+  )
+
+  const mailgunBaseUrl =
+    MAILGUN_REGION === 'eu' ? 'https://api.eu.mailgun.net/v3' : 'https://api.mailgun.net/v3'
+  const mailgunResponse = await fetch(`${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`,
+    },
+    body: formData,
+  })
+
+  const result = await mailgunResponse.json().catch(() => ({}))
+  if (!mailgunResponse.ok) {
+    return {
+      ok: false,
+      error: result.message || result.error || `Mailgun error ${mailgunResponse.status}`,
+    }
+  }
+
+  return { ok: true, mailgun_id: result.id }
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Create Supabase client with service role key for admin access
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'Method not allowed. Use POST.' }), {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
     if (!supabaseServiceKey) {
       return new Response(
         JSON.stringify({ success: false, error: 'Service role key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing authorization header' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const supabaseAuthed = createClient(supabaseUrl, supabaseAnonKey || supabaseServiceKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: authData, error: authError } = await supabaseAuthed.auth.getUser()
+    if (authError || !authData.user) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid or expired token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const userId = authData.user.id
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Parse request body
-    const { user_id, new_email, confirm_email = false }: UpdateEmailRequest = await req.json()
+    const body: UpdateEmailRequest = await req.json().catch(() => ({} as UpdateEmailRequest))
+    const cancel = !!body.cancel
+    const newEmail = (body.new_email || '').trim().toLowerCase()
 
-    if (!user_id || !new_email) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing user_id or new_email' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(new_email)) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Invalid email format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    console.log(`Updating email for user ${user_id} to ${new_email}`)
-
-    // Update email in Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-      user_id,
-      {
-        email: new_email,
-        email_confirm: confirm_email, // If true, skip email verification
-      }
-    )
-
-    if (authError) {
-      console.error('Error updating auth email:', authError)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Failed to update email in auth',
-          details: authError.message 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Also update email in your custom users table (if it exists)
-    const { error: userTableError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('users')
-      .update({ email: new_email })
-      .eq('id', user_id)
+      .select('id, email, name, role, pending_email')
+      .eq('id', userId)
+      .maybeSingle()
 
-    if (userTableError) {
-      console.warn('Error updating users table email:', userTableError)
-      // Don't fail the request if users table update fails - auth update is primary
+    if (profileError || !profile) {
+      return new Response(JSON.stringify({ success: false, error: 'User profile not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    console.log('✅ Email updated successfully for user:', user_id)
+    if (profile.role !== 'pm') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Only property managers can change their email here.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (cancel) {
+      const { error: clearError } = await supabaseAdmin
+        .from('users')
+        .update({
+          pending_email: null,
+          verification_token: null,
+          verification_token_expires_at: null,
+        })
+        .eq('id', userId)
+
+      if (clearError) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to cancel pending email change' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          cancelled: true,
+          message: 'Pending email change cancelled.',
+          email: profile.email,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!newEmail || !emailRegex.test(newEmail)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid email format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const currentEmail = (profile.email || '').trim().toLowerCase()
+    if (newEmail === currentEmail) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'That is already your current email address.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', newEmail)
+      .neq('id', userId)
+      .maybeSingle()
+
+    if (existing) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'That email is already in use by another account.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const verificationToken = crypto.randomUUID()
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+
+    const { error: pendingError } = await supabaseAdmin
+      .from('users')
+      .update({
+        pending_email: newEmail,
+        verification_token: verificationToken,
+        verification_token_expires_at: expiresAt,
+      })
+      .eq('id', userId)
+
+    if (pendingError) {
+      console.error('Failed to store pending email:', pendingError)
+      const hint =
+        pendingError.message?.includes('pending_email') || pendingError.code === '42703'
+          ? ' Run add-pending-email-column.sql in the SQL editor.'
+          : ''
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to start email change.${hint}`,
+          details: pendingError.message,
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const confirmLink = `${siteOrigin()}?token=${verificationToken}`
+    const displayName = profile.name || 'Property Manager'
+    const emailResult = await sendConfirmEmail({
+      to: newEmail,
+      name: displayName,
+      confirmLink,
+    })
+
+    if (!emailResult.ok) {
+      // Roll back pending state so the user is not stuck
+      await supabaseAdmin
+        .from('users')
+        .update({
+          pending_email: null,
+          verification_token: null,
+          verification_token_expires_at: null,
+        })
+        .eq('id', userId)
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: emailResult.error || 'Failed to send confirmation email',
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    console.log('✅ Email change confirmation queued:', {
+      userId,
+      pending_email: newEmail,
+      mailgun_id: emailResult.mailgun_id,
+    })
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Email updated successfully',
-        user_id: user_id,
-        new_email: new_email,
-        email_confirmed: confirm_email,
-        // Note: If confirm_email is false, user will need to verify the new email
+        pending: true,
+        pending_email: newEmail,
+        message:
+          'Confirmation email sent to your new address. Your login email will change after you click the link.',
+        mailgun_id: emailResult.mailgun_id,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
-
   } catch (error) {
-    console.error('Error updating user email:', error)
+    console.error('Error in update-user-email:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error' 
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }
 })
-
