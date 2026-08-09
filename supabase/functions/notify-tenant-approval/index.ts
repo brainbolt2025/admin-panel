@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,17 +91,15 @@ serve(async (req) => {
     }
 
     const subject = `Welcome! Your access to ${propertyName} has been approved`
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 16px;">You're Approved!</h2>
-          <p>Hi ${tenantName},</p>
-          <p>Great news — your request to join <strong>${propertyName}</strong> has been approved.</p>
-          <p style="margin-top: 32px;">If you have any questions, please contact your property manager.</p>
-          <p style="margin-top: 40px;">Warm regards,<br/>${approvedBy}</p>
-        </body>
-      </html>
-    `
+    const htmlBody = asineEmailHtml({
+      title: "You're Approved!",
+      greeting: `Hi ${tenantName},`,
+      paragraphs: [
+        `Great news — your request to join <strong>${propertyName}</strong> has been approved.`,
+        'If you have any questions, please contact your property manager.',
+      ],
+      signOff: `Warm regards,<br/>${approvedBy}`,
+    })
 
     const textBody = `Hi ${tenantName},
 

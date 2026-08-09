@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -297,33 +298,19 @@ serve(async (req) => {
       ? message_content.substring(0, 100) + '...' 
       : message_content
 
-    // Build email HTML
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #0f766e; margin-bottom: 20px;">New Message from ${senderName}</h2>
-          <p>Hi ${recipientName},</p>
-          <p>You have received a new message regarding <strong>${workOrderTitle}</strong>.</p>
-          <div style="background: #f5f5f5; border-left: 4px solid #0f766e; padding: 15px; margin: 20px 0; border-radius: 4px;">
+    const htmlBody = asineEmailHtml({
+      title: `New Message from ${senderName}`,
+      greeting: `Hi ${recipientName},`,
+      paragraphs: [
+        `You have received a new message regarding <strong>${workOrderTitle}</strong>.`,
+      ],
+      extraHtml: `<div style="background: #f5f5f5; border-left: 4px solid #0f766e; padding: 15px; margin: 20px 0; border-radius: 4px;">
             <p style="margin: 0; font-style: italic;">"${messagePreview}"</p>
-          </div>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${conversationLink}" 
-              style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-              View Message
-            </a>
-          </div>
-          <p style="color: #666; font-size: 14px; margin-top: 30px;">
-            This is an automated notification from Asine.
-          </p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-          <p style="color: #999; font-size: 12px;">
-            If the button doesn't work, copy and paste this link into your browser:<br>
-            <a href="${conversationLink}" style="color: #0f766e; word-break: break-all;">${conversationLink}</a>
-          </p>
-        </body>
-      </html>
-    `
+          </div>`,
+      cta: { label: 'View Message', href: conversationLink },
+      secondaryNote: 'This is an automated notification from Asine.',
+      fallbackLink: conversationLink,
+    })
     
     const textBody = `New Message from ${senderName}
 

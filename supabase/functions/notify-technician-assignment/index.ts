@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -176,14 +177,11 @@ serve(async (req) => {
     const workOrderTitle = workOrder.title || workOrder.description || 'Untitled Work Order'
     const priorityLabel = workOrder.priority || 'Not specified'
 
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 20px;">New Work Order Assignment</h2>
-          <p>Hi ${technician.name},</p>
-          <p>You have been assigned to a new work order:</p>
-          
-          <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+    const htmlBody = asineEmailHtml({
+      title: 'New Work Order Assignment',
+      greeting: `Hi ${technician.name},`,
+      paragraphs: ['You have been assigned to a new work order:'],
+      extraHtml: `<div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0 0 8px 0;"><strong>Title:</strong> ${workOrderTitle}</p>
             ${workOrder.description ? `<p style="margin: 0 0 8px 0;"><strong>Description:</strong> ${workOrder.description}</p>` : ''}
             <p style="margin: 0 0 8px 0;"><strong>Priority:</strong> ${priorityLabel}</p>
@@ -191,22 +189,10 @@ serve(async (req) => {
             ${workOrder.unit_number ? `<p style="margin: 0 0 8px 0;"><strong>Unit Number:</strong> ${workOrder.unit_number}</p>` : ''}
             <p style="margin: 0 0 8px 0;"><strong>Tenant:</strong> ${tenantName}</p>
             <p style="margin: 0;"><strong>Status:</strong> ${workOrder.status || 'Pending'}</p>
-          </div>
-
-          <p style="margin: 24px 0;">
-            <a href="${workOrderLink}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-              View Work Order
-            </a>
-          </p>
-
-          <p style="color: #666; font-size: 14px; margin-top: 30px;">
-            Please review the work order details and begin work as soon as possible.
-          </p>
-
-          <p style="margin-top: 32px;">Best regards,<br/>The Asine Team</p>
-        </body>
-      </html>
-    `
+          </div>`,
+      cta: { label: 'View Work Order', href: workOrderLink },
+      secondaryNote: 'Please review the work order details and begin work as soon as possible.',
+    })
 
     const textBody = `Hi ${technician.name},
 

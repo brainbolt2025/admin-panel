@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,28 +37,19 @@ async function sendConfirmEmail(opts: {
     return { ok: false, error: 'Mailgun API key not configured' }
   }
 
-  const htmlBody = `
-    <html>
-      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #0f766e; margin-bottom: 20px;">Confirm your new email</h2>
-        <p>Hi ${opts.name},</p>
-        <p>You requested to change your Asine Property Manager email to <strong>${opts.to}</strong>.</p>
-        <p>Click the button below to confirm. Your login email will only change after you confirm.</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${opts.confirmLink}"
-            style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-            Confirm new email
-          </a>
-        </div>
-        <p style="color: #666; font-size: 14px;">This link expires in 24 hours. If you did not request this change, you can ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-        <p style="color: #999; font-size: 12px;">
-          If the button doesn't work, copy and paste this link:<br>
-          <a href="${opts.confirmLink}" style="color: #0f766e; word-break: break-all;">${opts.confirmLink}</a>
-        </p>
-      </body>
-    </html>
-  `
+  const htmlBody = asineEmailHtml({
+    title: 'Confirm your new email',
+    greeting: `Hi ${opts.name},`,
+    paragraphs: [
+      `You requested to change your Asine Property Manager email to <strong>${opts.to}</strong>.`,
+      'Click the button below to confirm. Your login email will only change after you confirm.',
+    ],
+    cta: { label: 'Confirm new email', href: opts.confirmLink },
+    noticeHtml:
+      'This link expires in 24 hours. If you did not request this change, you can ignore this email.',
+    signOff: null,
+    fallbackLink: opts.confirmLink,
+  })
 
   const formData = new FormData()
   formData.append('from', `Asine Admin <noreply@${MAILGUN_DOMAIN}>`)

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -244,21 +245,14 @@ serve(async (req) => {
         formData.append('to', email)
         formData.append('subject', 'Thank you for joining the Asine waitlist!')
 
-        const htmlBody = `
-          <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <h2 style="color: #0f766e; margin-bottom: 20px;">Thank You for Joining the Asine Waitlist!</h2>
-              <p>Hello,</p>
-              <p>Thank you for signing up for the Asine Property Management waitlist! We're excited to have <strong>${property_name}</strong> join our community.</p>
-              <p>We've received your interest and have added you to our waitlist. We'll keep you updated as we move forward.</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-              <p style="color: #999; font-size: 12px;">
-                Best regards,<br>
-                The Asine Team
-              </p>
-            </body>
-          </html>
-        `
+        const htmlBody = asineEmailHtml({
+          title: 'Thank You for Joining the Asine Waitlist!',
+          greeting: 'Hello,',
+          paragraphs: [
+            `Thank you for signing up for the Asine Property Management waitlist! We're excited to have <strong>${property_name}</strong> join our community.`,
+            "We've received your interest and have added you to our waitlist. We'll keep you updated as we move forward.",
+          ],
+        })
 
         const textBody = `Thank You for Joining the Asine Waitlist!
 

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -251,34 +252,18 @@ serve(async (req) => {
       )
     }
 
-    // Build email content
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 20px;">Reset Your Password</h2>
-          <p>Hi ${userName},</p>
-          <p>We received a request to reset your password for your Asine account.</p>
-          <p>Click the button below to reset your password:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${emailLink}" 
-              style="background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-              Reset Password
-            </a>
-          </div>
-
-          <p style="color: #666; font-size: 14px; margin-top: 30px;">
-            If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
-          </p>
-
-          <p style="color: #666; font-size: 14px;">
-            This link will expire in 1 hour for security reasons.
-          </p>
-
-          <p style="margin-top: 32px;">Best regards,<br/>The Asine Team</p>
-        </body>
-      </html>
-    `
+    const htmlBody = asineEmailHtml({
+      title: 'Reset Your Password',
+      greeting: `Hi ${userName},`,
+      paragraphs: [
+        'We received a request to reset your password for your Asine account.',
+        'Click the button below to reset your password:',
+      ],
+      cta: { label: 'Reset Password', href: emailLink },
+      noticeHtml:
+        "If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.",
+      secondaryNote: 'This link will expire in 1 hour for security reasons.',
+    })
 
     const textBody = `Hi ${userName},
 

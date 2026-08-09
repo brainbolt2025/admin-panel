@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,21 +90,21 @@ serve(async (req) => {
     }
 
     const subject = `Your technician profile has been approved for ${propertyName}`
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <p>Hi ${technicianName},</p>
-          <p>Great news — your technician profile has been approved by the Property Manager for <strong>${propertyName}</strong>.</p>
-          <p>You can now log in to your Asine account and start receiving work orders assigned to you.</p>
-          <p style="margin-top: 24px; margin-bottom: 16px;"><strong>Here's what you can do next:</strong></p>
+    const htmlBody = asineEmailHtml({
+      title: 'Your Profile Has Been Approved',
+      greeting: `Hi ${technicianName},`,
+      paragraphs: [
+        `Great news — your technician profile has been approved by the Property Manager for <strong>${propertyName}</strong>.`,
+        'You can now log in to your Asine account and start receiving work orders assigned to you.',
+      ],
+      extraHtml: `<p style="margin:0 0 16px 0;color:#1f2933;font-size:16px;line-height:1.6;"><strong>Here's what you can do next:</strong></p>
           <ul style="list-style: none; padding: 0; margin: 0 0 24px 0;">
             <li style="margin-bottom: 12px;">🔧 View and manage your assigned work orders in the app.</li>
             <li style="margin-bottom: 12px;">💬 Communicate directly with tenants or the property manager.</li>
             <li style="margin-bottom: 12px;">Mark jobs as complete once finished.</li>
-          </ul>
-        </body>
-      </html>
-    `
+          </ul>`,
+      signOff: null,
+    })
 
     const textBody = `Hi ${technicianName},
 

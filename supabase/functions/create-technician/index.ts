@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Import serve from Deno standard library
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 // CORS headers for cross-origin requests
 const corsHeaders = {
@@ -544,38 +545,24 @@ serve(async (req) => {
             emailError = 'Email service not configured. Supabase default email may be sent.'
           } else {
             // Build technician invite email: verify deep link + login credentials
-            const htmlBody = `
-                <html>
-                  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #0f766e; margin-bottom: 20px;">Welcome to Asine</h2>
-                    <p>Hi ${name},</p>
-                    <p>Your property manager invited you as a technician at <strong>${finalPropertyName || 'your property'}</strong>.</p>
-                    <p>Tap the button below to verify your email and open the Asine app. Then sign in with the credentials below.</p>
-                    <div style="text-align: center; margin: 30px 0;">
-                      <a href="${verifyLink}" 
-                        style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-                        Verify &amp; Open App
-                      </a>
-                    </div>
-                    <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 16px; margin: 24px 0;">
+            const htmlBody = asineEmailHtml({
+              title: 'Welcome to Asine',
+              greeting: `Hi ${name},`,
+              paragraphs: [
+                `Your property manager invited you as a technician at <strong>${finalPropertyName || 'your property'}</strong>.`,
+                'Tap the button below to verify your email and open the Asine app. Then sign in with the credentials below.',
+              ],
+              extraHtml: `<div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 16px; margin: 24px 0;">
                       <p style="margin: 0 0 8px 0; font-weight: bold; color: #0f766e;">Your login credentials</p>
                       <p style="margin: 4px 0;"><strong>Email:</strong> ${email}</p>
                       <p style="margin: 4px 0;"><strong>Temporary password:</strong> <span style="font-size: 1.25rem; letter-spacing: 0.15em; font-family: monospace;">${password}</span></p>
-                    </div>
-                    <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                      <strong>Important:</strong> The verification link expires in 24 hours. You can change your password after signing in.
-                    </p>
-                    <p style="color: #666; font-size: 14px;">
-                      If you didn&apos;t expect this invitation, please ignore this email.
-                    </p>
-                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                    <p style="color: #999; font-size: 12px;">
-                      If the button doesn&apos;t work, copy and paste this link into your browser:<br>
-                      <a href="${verifyLink}" style="color: #0f766e; word-break: break-all;">${verifyLink}</a>
-                    </p>
-                  </body>
-                </html>
-            `
+                    </div>`,
+              cta: { label: 'Verify & Open App', href: verifyLink },
+              noticeHtml: '<strong>Important:</strong> The verification link expires in 24 hours. You can change your password after signing in.',
+              secondaryNote: "If you didn't expect this invitation, please ignore this email.",
+              signOff: null,
+              fallbackLink: verifyLink,
+            })
             
             const textBody = `Welcome to Asine
 
