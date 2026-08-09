@@ -119,14 +119,20 @@ serve(async (req) => {
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-12-18.acacia' })
     const isTestMode = stripeSecretKey.startsWith('sk_test_')
 
-    // Define price IDs based on plan and environment
-    const priceId = plan === 'monthly' 
-      ? (isTestMode 
-          ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'   // DEV_MONTHLY_PRICE_ID
-          : 'price_1SMce8LC1RJAUbjMf3MZyCav')  // LIVE_MONTHLY_PRICE_ID
-      : (isTestMode 
-          ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'   // DEV_YEARLY_PRICE_ID
-          : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')  // LIVE_YEARLY_PRICE_ID
+    // Price IDs from Supabase secrets (set per project). Fallbacks keep current behavior
+    // until secrets are configured.
+    const monthlyPriceId =
+      Deno.env.get('STRIPE_MONTHLY_PRICE_ID') ??
+      (isTestMode
+        ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'
+        : 'price_1SMce8LC1RJAUbjMf3MZyCav')
+    const yearlyPriceId =
+      Deno.env.get('STRIPE_YEARLY_PRICE_ID') ??
+      (isTestMode
+        ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'
+        : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')
+    const priceId = plan === 'monthly' ? monthlyPriceId : yearlyPriceId
+    console.log('Using price ID:', priceId)
 
     // Find existing subscription - look for the most recent subscription for this customer
     const subscriptions = await stripe.subscriptions.list({
