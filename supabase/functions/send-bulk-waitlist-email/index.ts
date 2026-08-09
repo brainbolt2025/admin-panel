@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -185,19 +186,10 @@ serve(async (req) => {
         formData.append('to', entry.email)
         formData.append('subject', subject)
 
-        const htmlBody = `
-          <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <h2 style="color: #0f766e; margin-bottom: 20px;">${subject}</h2>
-              ${htmlMessage}
-              <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-              <p style="color: #999; font-size: 12px;">
-                Best regards,<br>
-                The Asine Team
-              </p>
-            </body>
-          </html>
-        `
+        const htmlBody = asineEmailHtml({
+          title: subject,
+          extraHtml: htmlMessage,
+        })
 
         formData.append('html', htmlBody)
         formData.append('text', message)

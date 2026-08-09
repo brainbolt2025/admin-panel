@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -166,32 +167,22 @@ serve(async (req) => {
       const tenantName = tenant.name || 'there'
       const unitNumber = tenant.unit_number ? ` (Unit ${tenant.unit_number})` : ''
 
-      const htmlBody = `
-        <html>
-          <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-            <p>Hi ${tenantName},</p>
-            <p>You've been invited by <strong>${PM_NAME}</strong> to join <strong>${PROPERTY_NAME}</strong>${unitNumber} on <strong>Asine</strong>.</p>
-            <p>Asine helps you manage maintenance requests, communicate with your property manager, and stay connected with your property.</p>
-            <p><strong>Get started in 3 easy steps:</strong></p>
-            <ol style="margin: 20px 0; padding-left: 20px;">
-              <li style="margin-bottom: 10px;">Download the Asine app using the link below</li>
-              <li style="margin-bottom: 10px;">Open the app and tap "Sign Up"</li>
-              <li style="margin-bottom: 10px;">Use your email address: <strong>${tenant.email}</strong> to create your account</li>
-            </ol>
-            <p style="margin: 24px 0; text-align: center;">
-              <a href="${GOOGLE_PLAY_URL}" style="display: inline-block; background: #01875f; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-                📱 Download for Android
-              </a>
-            </p>
-            <p style="margin-top: 32px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              If you have any questions, please contact ${PM_NAME}.<br/>
-              <br/>
-              Welcome to Asine!<br/>
-              The Asine Team
-            </p>
-          </body>
-        </html>
-      `
+      const htmlBody = asineEmailHtml({
+        title: 'Welcome to Asine',
+        greeting: `Hi ${tenantName},`,
+        paragraphs: [
+          `You've been invited by <strong>${PM_NAME}</strong> to join <strong>${PROPERTY_NAME}</strong>${unitNumber} on <strong>Asine</strong>.`,
+          'Asine helps you manage maintenance requests, communicate with your property manager, and stay connected with your property.',
+        ],
+        extraHtml: `<p style="margin:0 0 16px 0;color:#1f2933;font-size:16px;line-height:1.6;"><strong>Get started in 3 easy steps:</strong></p>
+            <ol style="margin:0 0 16px 0;padding-left:20px;color:#1f2933;font-size:16px;line-height:1.6;">
+              <li style="margin-bottom:10px;">Download the Asine app using the link below</li>
+              <li style="margin-bottom:10px;">Open the app and tap "Sign Up"</li>
+              <li style="margin-bottom:10px;">Use your email address: <strong>${tenant.email}</strong> to create your account</li>
+            </ol>`,
+        cta: { label: '📱 Download for Android', href: GOOGLE_PLAY_URL },
+        signOff: `If you have any questions, please contact ${PM_NAME}.<br/><br/>Welcome to Asine!<br/>The Asine Team`,
+      })
 
       const textBody = `Hi ${tenantName},
 

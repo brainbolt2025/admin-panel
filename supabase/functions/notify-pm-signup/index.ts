@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -177,33 +178,22 @@ serve(async (req) => {
     const unitInfo = unit_number ? ` (Unit ${unit_number})` : ''
     const propertyName = property.name || 'your property'
 
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <h2 style="color: #0f766e; margin-bottom: 20px;">New ${userTypeLabel} Signup</h2>
-          <p>Hi ${pmUser.name || 'Property Manager'},</p>
-          <p>A new ${userTypeLabel.toLowerCase()} has signed up for <strong>${propertyName}</strong>:</p>
-          
-          <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+    const htmlBody = asineEmailHtml({
+      title: `New ${userTypeLabel} Signup`,
+      greeting: `Hi ${pmUser.name || 'Property Manager'},`,
+      paragraphs: [
+        `A new ${userTypeLabel.toLowerCase()} has signed up for <strong>${propertyName}</strong>:`,
+      ],
+      extraHtml: `<div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0 0 8px 0;"><strong>Name:</strong> ${user_name}</p>
             <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${user_email}</p>
             <p style="margin: 0 0 8px 0;"><strong>Role:</strong> ${userTypeLabel}</p>
             <p style="margin: 0 0 8px 0;"><strong>Property:</strong> ${propertyName}</p>
             ${unit_number ? `<p style="margin: 0;"><strong>Unit:</strong> ${unit_number}</p>` : '<p style="margin: 0;">&nbsp;</p>'}
           </div>
-
-          <p style="margin-top: 24px;">
-            ${actionRequired}
-          </p>
-
-          <p style="color: #666; font-size: 14px; margin-top: 30px;">
-            You can review and approve this account in the admin panel.
-          </p>
-
-          <p style="margin-top: 32px;">Best regards,<br/>The Asine Team</p>
-        </body>
-      </html>
-    `
+          <p style="margin:0 0 16px 0;color:#1f2933;font-size:16px;line-height:1.6;">${actionRequired}</p>`,
+      secondaryNote: 'You can review and approve this account in the admin panel.',
+    })
 
     const textBody = `Hi ${pmUser.name || 'Property Manager'},
 

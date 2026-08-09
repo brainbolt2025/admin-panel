@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -135,22 +136,18 @@ serve(async (req) => {
 
     const greeting = name ? `Hi ${name},` : 'Hi there,'
     
-    const htmlBody = `
-      <html>
-        <body style="font-family: Arial, sans-serif; color: #1f2933; line-height: 1.6; padding: 24px;">
-          <p>${greeting}</p>
-          <p>You've been invited to manage your properties with <strong>Asine</strong>.</p>
-          <p>Click the button below to activate your account and start your subscription.</p>
-          <p style="margin: 24px 0;">
-            <a href="${subscribeLink}" style="display: inline-block; background: #0f766e; color: #ffffff; padding: 12px 24px; border-radius: 9999px; text-decoration: none; font-weight: bold;">
-              Activate &amp; Choose Plan
-            </a>
-          </p>
-          <p>The setup takes less than 2 minutes — once you subscribe, you'll gain full access to your dashboard.</p>
-          <p style="margin-top: 32px;">Welcome aboard,<br/>The Asine Team</p>
-        </body>
-      </html>
-    `
+    const htmlBody = asineEmailHtml({
+      title: 'Activate your Asine account',
+      greeting,
+      paragraphs: [
+        "You've been invited to manage your properties with <strong>Asine</strong>.",
+        'Click the button below to activate your account and start your subscription.',
+        "The setup takes less than 2 minutes — once you subscribe, you'll gain full access to your dashboard.",
+      ],
+      cta: { label: 'Activate & Choose Plan', href: subscribeLink },
+      signOff: 'Welcome aboard,<br/>The Asine Team',
+      fallbackLink: subscribeLink,
+    })
 
     const textBody = `${greeting}
 

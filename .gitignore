@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+email-preview.html
 
 # Local DB dumps (may contain prod data)
 prod-schema.sql

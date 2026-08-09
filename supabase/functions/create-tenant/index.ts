@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Import serve from Deno standard library
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { asineEmailHtml } from '../_shared/asineEmailLayout.ts'
 
 // CORS headers for cross-origin requests
 const corsHeaders = {
@@ -575,35 +576,18 @@ serve(async (req) => {
             emailError = 'Email service not configured. Supabase default email may be sent.'
           } else {
             // Build tenant-specific email HTML
-            const htmlBody = `
-              <html>
-                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-                  <h2 style="color: #0f766e; margin-bottom: 20px;">Welcome to Asine</h2>
-                  <p>Hi ${name},</p>
-                  <p>Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.</p>
-                  <div style="text-align: center; margin: 30px 0;">
-                    <a href="${verifyLink}" 
-                      style="background: #0f766e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: bold;">
-                      Verify Account
-                    </a>
-                  </div>
-                  <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                    <strong>Important:</strong> This verification link expires in 24 hours.
-                  </p>
-                  <p style="color: #666; font-size: 14px;">
-                    After verifying your email, your account will be reviewed by your property manager before you can sign in.
-                  </p>
-                  <p style="color: #666; font-size: 14px;">
-                    If you didn't create an account, please ignore this email.
-                  </p>
-                  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                  <p style="color: #999; font-size: 12px;">
-                    If the button doesn't work, copy and paste this link into your browser:<br>
-                    <a href="${verifyLink}" style="color: #0f766e; word-break: break-all;">${verifyLink}</a>
-                  </p>
-                </body>
-              </html>
-            `
+            const htmlBody = asineEmailHtml({
+              title: 'Welcome to Asine',
+              greeting: `Hi ${name},`,
+              paragraphs: [
+                `Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.`,
+                'After verifying your email, your account will be reviewed by your property manager before you can sign in.',
+              ],
+              cta: { label: 'Verify Account', href: verifyLink },
+              noticeHtml: '<strong>Important:</strong> This verification link expires in 24 hours.',
+              secondaryNote: "If you didn't create an account, please ignore this email.",
+              fallbackLink: verifyLink,
+            })
             
             const textBody = `Welcome to Asine
 
