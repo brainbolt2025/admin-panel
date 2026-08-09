@@ -1,7 +1,6 @@
 /**
  * Shared Asine branded HTML email shell.
- * Logo: public/asine-logo.jpg via EMAIL_LOGO_URL or a public SITE_URL host.
- * (UI uses asine-logo.png; emails use the JPG for better client rendering.)
+ * Logo: public/Logo-Final.png via EMAIL_LOGO_URL or a public SITE_URL host.
  */
 
 const BRAND_GREEN = '#1a3c34'
@@ -40,10 +39,10 @@ export function getAsineLogoUrl(): string {
     if (!isPublicHttpOrigin(origin)) continue
     // Prefer https for email image loads
     const httpsOrigin = origin.replace(/^http:\/\//i, 'https://')
-    return `${httpsOrigin}/asine-logo.jpg`
+    return `${httpsOrigin}/Logo-Final.png`
   }
 
-  return `${DEFAULT_PUBLIC_ORIGIN}/asine-logo.jpg`
+  return `${DEFAULT_PUBLIC_ORIGIN}/Logo-Final.png`
 }
 
 export interface AsineEmailCta {
@@ -115,6 +114,7 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
        </p>`
     : ''
 
+  // Green stripe as background; logo sits in that header; white card overlaps below.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -125,13 +125,23 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
     <tr>
-      <td align="center" style="padding:32px 16px 40px 16px;">
+      <td align="center" bgcolor="#f3f4f6" style="padding:20px 16px 40px 16px;background-color:#f3f4f6;background-image:linear-gradient(${BRAND_GREEN},${BRAND_GREEN});background-size:100% 140px;background-repeat:no-repeat;">
+        <!--[if gte mso 9]>
+        <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:140px;">
+          <v:fill type="tile" color="${BRAND_GREEN}" />
+          <v:textbox inset="0,0,0,0">
+        <![endif]-->
+        <!-- Logo in the green header (above the card) -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin:0 auto 16px auto;">
+          <tr>
+            <td align="center" style="padding:4px 0 12px 0;">
+              <img src="${logoUrl}" alt="Asine" width="140" style="display:block;margin:0 auto;max-width:140px;height:auto;border:0;" />
+            </td>
+          </tr>
+        </table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
             <td style="padding:36px 32px;">
-              <div style="margin:0 0 24px 0;">
-                <img src="${logoUrl}" alt="Asine" width="160" style="display:block;max-width:160px;height:auto;border:0;" />
-              </div>
               <h1 style="margin:0 0 20px 0;color:${BRAND_GREEN};font-size:26px;line-height:1.25;font-weight:bold;">
                 ${opts.title}
               </h1>
@@ -146,6 +156,10 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
             </td>
           </tr>
         </table>
+        <!--[if gte mso 9]>
+          </v:textbox>
+        </v:rect>
+        <![endif]-->
       </td>
     </tr>
   </table>
