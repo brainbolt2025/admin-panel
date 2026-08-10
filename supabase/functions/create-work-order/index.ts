@@ -145,6 +145,27 @@ serve(async (req) => {
 
     console.log('✅ Work order created successfully:', workOrder.id)
 
+    // Notify PM (best-effort — do not fail WO creation if email fails)
+    try {
+      const notifyUrl = `${supabaseUrl}/functions/v1/notify-pm-work-order`
+      const notifyResponse = await fetch(notifyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ work_order_id: workOrder.id }),
+      })
+      if (!notifyResponse.ok) {
+        const notifyError = await notifyResponse.text().catch(() => '')
+        console.error('PM work order notification failed:', notifyResponse.status, notifyError)
+      } else {
+        console.log('PM work order notification sent')
+      }
+    } catch (notifyErr) {
+      console.error('PM work order notification error:', notifyErr)
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

@@ -32,5 +32,6 @@ export const config = {
     reactivateSubscription: `${supabaseUrl}/functions/v1/reactivate-subscription`,
     renewSubscription: `${supabaseUrl}/functions/v1/renew-subscription`,
     updateUserEmail: `${supabaseUrl}/functions/v1/update-user-email`,
+    contactSupport: `${supabaseUrl}/functions/v1/contact-support`,
   },
 }
