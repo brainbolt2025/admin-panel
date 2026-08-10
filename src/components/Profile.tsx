@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Shield, Building, Calendar, LogOut, XCircle, AlertCircle, Check, AlertTriangle } from 'lucide-react';
+import { User, Mail, Shield, Building, Calendar, LogOut, XCircle, AlertCircle, Check, AlertTriangle, LifeBuoy } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import { toUserFacingError } from '../lib/userFacingError';
@@ -37,6 +37,12 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
   const [emailChangeLoading, setEmailChangeLoading] = useState(false);
   const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
   const [emailChangeNotice, setEmailChangeNotice] = useState<string | null>(null);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportTitle, setSupportTitle] = useState('');
+  const [supportDescription, setSupportDescription] = useState('');
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [supportSuccess, setSupportSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -184,6 +190,50 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
         return 'Super Admin';
       default:
         return role || 'N/A';
+    }
+  };
+
+  const handleContactSupport = async () => {
+    setSupportError(null);
+    setSupportSuccess(null);
+
+    const title = supportTitle.trim();
+    const description = supportDescription.trim();
+    if (!title || !description) {
+      setSupportError('Please enter a title and description.');
+      return;
+    }
+
+    setSupportLoading(true);
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await fetch(config.api.contactSupport, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ title, description }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to send support request');
+      }
+
+      setSupportSuccess('Your message was sent. We will get back to you soon.');
+      setSupportTitle('');
+      setSupportDescription('');
+    } catch (err) {
+      console.error('Error contacting support:', err);
+      setSupportError(toUserFacingError(err, 'Unable to send your message. Please try again.'));
+    } finally {
+      setSupportLoading(false);
     }
   };
 
@@ -626,8 +676,24 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
             )}
           </div>
 
-          {/* Logout Button */}
+          {/* Contact Support */}
           <div className="mt-8 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSupportModal(true);
+                setSupportError(null);
+                setSupportSuccess(null);
+              }}
+              className="w-full bg-teal-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-medium hover:bg-teal-700 transition-colors"
+            >
+              <LifeBuoy className="w-5 h-5" />
+              <span>Contact Support</span>
+            </button>
+          </div>
+
+          {/* Logout Button */}
+          <div className="mt-4">
             <button
               onClick={onLogout}
               className="w-full bg-red-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-medium hover:bg-red-700 transition-colors"
@@ -638,6 +704,89 @@ const Profile = ({ onLogout }: ProfileProps = {}) => {
           </div>
         </div>
       </div>
+
+      {/* Contact Support Modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center mb-4">
+              <LifeBuoy className="w-6 h-6 text-teal-600 mr-2" />
+              <h3 className="text-lg font-semibold text-gray-800">Contact Support</h3>
+            </div>
+
+            <p className="text-gray-600 text-sm mb-4">
+              Tell us what you need help with. We&apos;ll email our team with your request.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1" htmlFor="support-title">
+                  Title
+                </label>
+                <input
+                  id="support-title"
+                  type="text"
+                  value={supportTitle}
+                  onChange={(e) => setSupportTitle(e.target.value)}
+                  maxLength={200}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="Brief summary"
+                  disabled={supportLoading}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1" htmlFor="support-description">
+                  Description
+                </label>
+                <textarea
+                  id="support-description"
+                  value={supportDescription}
+                  onChange={(e) => setSupportDescription(e.target.value)}
+                  maxLength={5000}
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+                  placeholder="Describe the issue or question"
+                  disabled={supportLoading}
+                />
+              </div>
+            </div>
+
+            {supportError && (
+              <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-red-800 text-sm">{supportError}</p>
+              </div>
+            )}
+            {supportSuccess && (
+              <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-green-800 text-sm">{supportSuccess}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSupportModal(false);
+                  setSupportError(null);
+                  setSupportSuccess(null);
+                }}
+                disabled={supportLoading}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleContactSupport}
+                disabled={supportLoading}
+                className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {supportLoading ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cancel Subscription Modal */}
       {showCancelModal && (
