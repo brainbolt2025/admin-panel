@@ -13,6 +13,8 @@ export interface PmTechnician {
   profile_picture_url?: string | null
   property_name?: string | null
   email_verified?: boolean | null
+  /** True when this row is a pending invite, not an Auth user yet */
+  pending_invite?: boolean
 }
 
 export interface PmTenant {
@@ -131,10 +133,31 @@ export async function fetchTechniciansQuery(): Promise<TechniciansQueryResult> {
     profile_picture_url: technician.profile_picture_url,
     property_name: technician.property_name,
     email_verified: technician.email_verified,
+    pending_invite: false,
+  }))
+
+  const { data: inviteData } = await supabaseClient
+    .from('technician_invites')
+    .select('id, email, first_name, last_name, property_name, created_at, expires_at')
+    .eq('property_id', propertyId)
+    .is('accepted_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+
+  const pendingInvites: PmTechnician[] = (inviteData ?? []).map((invite) => ({
+    id: invite.id,
+    name: [invite.first_name, invite.last_name].filter(Boolean).join(' ') || null,
+    email: invite.email,
+    role: 'technician',
+    approved: 'pending' as ApprovalStatus,
+    created_at: invite.created_at,
+    property_name: invite.property_name,
+    email_verified: false,
+    pending_invite: true,
   }))
 
   const profilePictureUrls = await fetchProfilePictureUrls(technicians)
-  return { technicians, profilePictureUrls }
+  return { technicians: [...pendingInvites, ...technicians], profilePictureUrls }
 }
 
 export async function fetchTenantsQuery(): Promise<TenantsQueryResult> {
