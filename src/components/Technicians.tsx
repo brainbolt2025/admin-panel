@@ -42,6 +42,7 @@ interface Technician {
   profile_picture_url?: string | null;
   property_name?: string | null;
   email_verified?: boolean | null;
+  pending_invite?: boolean;
 }
 
 interface TechniciansProps {
@@ -368,16 +369,17 @@ const Technicians = ({
 
       if (data.email_sent === false) {
         setNotice({
-          title: 'Technician created',
+          title: 'Invitation incomplete',
           message:
-            'The account was created, but the invitation email may not have been sent. ' +
-            (data.email_error || 'Please contact support if they do not receive credentials.'),
+            'The invite was saved, but the email may not have been sent. ' +
+            (data.email_error || 'Please contact support if they do not receive the set-password link.'),
           tone: 'error',
         });
       } else {
         setNotice({
           title: 'Invitation sent',
-          message: 'The technician will receive login credentials by email.',
+          message:
+            'The technician will receive an email to create their password. Their account is created only after they set it.',
           tone: 'success',
         });
       }
@@ -419,6 +421,32 @@ const Technicians = ({
       });
     } finally {
       setIsRevoking(false);
+    }
+  };
+
+  const handleCancelInvite = async (invite: Technician) => {
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const { error } = await supabaseClient
+        .from('technician_invites')
+        .delete()
+        .eq('id', invite.id);
+
+      if (error) throw error;
+
+      invalidateTechniciansData(queryClient);
+      setNotice({
+        title: 'Invite cancelled',
+        message: `The invitation to ${invite.email || 'this technician'} was cancelled.`,
+        tone: 'success',
+      });
+    } catch (err) {
+      console.error('Error cancelling invite:', err);
+      setNotice({
+        title: 'Cancel failed',
+        message: 'Could not cancel this invitation. Please try again.',
+        tone: 'error',
+      });
     }
   };
 
@@ -483,8 +511,9 @@ const Technicians = ({
                     <Wrench className="w-14 h-14 text-teal-600 mx-auto mb-4" />
                     <h3 className="text-2xl font-bold text-gray-900 mb-2">No technicians yet</h3>
                     <p className="text-gray-500 mb-6">
-                      Invite a technician with their name and email. They&apos;ll get a temporary
-                      password and a link to open the Asine app.
+                      Invite a technician with their name and email. They&apos;ll get a link to
+                      open the Asine app and create their own password. The account is created
+                      only after they set it.
                     </p>
                     {isPM && (
                       <button
@@ -545,6 +574,8 @@ const Technicians = ({
                                   <Wrench className="w-5 h-5 text-teal-600" />
                                 </div>
                               )}
+                              {!technician.pending_invite && (
+                                <>
                               <input
                                 ref={fileInputRef}
                                 type="file"
@@ -564,6 +595,8 @@ const Technicians = ({
                                   <Camera className="w-4 h-4 text-white" />
                                 )}
                               </label>
+                                </>
+                              )}
                             </div>
                             <div className="text-sm font-medium text-gray-900">
                               {technician.name || 'N/A'}
@@ -577,7 +610,12 @@ const Technicians = ({
                           </div>
                         </td>
                         <td className="py-4 px-6">
-                          {technician.email_verified ? (
+                          {technician.pending_invite ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-xs font-medium">
+                              <Mail className="w-3 h-3" />
+                              Waiting for password
+                            </span>
+                          ) : technician.email_verified ? (
                             <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
                               <MailCheck className="w-3 h-3" />
                               Verified
@@ -590,7 +628,12 @@ const Technicians = ({
                           )}
                         </td>
                         <td className="py-4 px-6">
-                          {isRejected(technician.approved) ? (
+                          {technician.pending_invite ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs font-medium">
+                              <Clock className="w-3 h-3" />
+                              Invite pending
+                            </span>
+                          ) : isRejected(technician.approved) ? (
                             <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium">
                               <XIcon className="w-3 h-3" />
                               Revoked
@@ -607,21 +650,33 @@ const Technicians = ({
                         </td>
                         <td className="py-4 px-6">
                           <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() => handleViewDetails(technician)}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
-                            >
-                              <Info className="w-3 h-3" />
-                              Details
-                            </button>
-                            {isApproved(technician.approved) && (
+                            {technician.pending_invite ? (
                               <button
-                                onClick={() => setRevokeTarget(technician)}
+                                onClick={() => void handleCancelInvite(technician)}
                                 className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
                               >
                                 <XIcon className="w-3 h-3" />
-                                Revoke
+                                Cancel invite
                               </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleViewDetails(technician)}
+                                  className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
+                                >
+                                  <Info className="w-3 h-3" />
+                                  Details
+                                </button>
+                                {isApproved(technician.approved) && (
+                                  <button
+                                    onClick={() => setRevokeTarget(technician)}
+                                    className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+                                  >
+                                    <XIcon className="w-3 h-3" />
+                                    Revoke
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -689,8 +744,8 @@ const Technicians = ({
             {inviteStep === 'form' ? (
               <>
                 <p className="text-sm text-gray-600 mb-4">
-                  We&apos;ll create their account, email a temporary password, and a link to open
-                  the app.
+                  We&apos;ll email them a link to open the app and create their own password for
+                  your property.
                 </p>
                 <form onSubmit={handleInviteFormContinue} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -757,7 +812,8 @@ const Technicians = ({
             ) : (
               <>
                 <p className="text-sm text-gray-600 mb-4">
-                  Double-check these details before we create the account and send the email.
+                  Double-check these details before we send the invitation. They will set their own
+                  password from the email.
                 </p>
                 <div className="rounded-lg border border-teal-100 bg-teal-50/60 p-4 space-y-2 mb-4">
                   <p className="text-sm text-gray-800">
