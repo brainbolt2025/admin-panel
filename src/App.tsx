@@ -12,6 +12,7 @@ import Users from './components/Users'
 import Technicians from './components/Technicians'
 import Approvals from './components/Approvals'
 import Profile from './components/Profile'
+import Reports from './components/Reports'
 import SubscriptionCancellationBanner from './components/SubscriptionCancellationBanner'
 import RenewSubscription from './components/RenewSubscription'
 import EmailVerificationBanner from './components/EmailVerificationBanner'
@@ -23,11 +24,13 @@ import { queryKeys } from './lib/queryKeys'
 import {
   fetchPendingWorkOrderIds,
   fetchPendingTenantIds,
+  fetchPendingReportIds,
 } from './lib/pmQueries'
 import {
   invalidateTechniciansData,
   invalidateTenantsData,
   invalidateWorkOrdersData,
+  invalidateReportsData,
 } from './lib/invalidatePmData'
 import { normalizeApprovalStatus, type ApprovalStatus } from './lib/approvalStatus'
 import { usePendingAcknowledgment } from './lib/usePendingAcknowledgment'
@@ -152,8 +155,15 @@ function App() {
     enabled: isPmUser && !!propertyId,
   })
 
+  const { data: pendingReportIdsData } = useQuery({
+    queryKey: queryKeys.pendingReports(propertyId),
+    queryFn: () => fetchPendingReportIds(propertyId),
+    enabled: isPmUser && !!propertyId,
+  })
+
   const pendingWorkOrderIds = pendingWorkOrderIdsData ?? EMPTY_IDS
   const pendingTenantIds = pendingTenantIdsData ?? EMPTY_IDS
+  const pendingReportIds = pendingReportIdsData ?? EMPTY_IDS
 
   const pendingWorkOrdersCount = pendingWorkOrderIds.length
   const pendingTechniciansCount = 0
@@ -177,6 +187,8 @@ function App() {
   const acknowledgeTechnicians = useCallback(() => {}, [])
   const { hasUnseenPending: hasUnseenTenants, acknowledge: acknowledgeTenants } =
     usePendingAcknowledgment('tenants', propertyId, pendingTenantIds)
+  const { hasUnseenPending: hasUnseenReports, acknowledge: acknowledgeReports } =
+    usePendingAcknowledgment('reports', propertyId, pendingReportIds)
 
 
   const syncLocalStorageUser = useCallback((profile: UserProfile | null) => {
@@ -736,10 +748,34 @@ function App() {
         }
       })
 
+    const reportsChannel = supabaseClient
+      .channel(`pm_reports_${propertyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reports',
+          filter: `property_id=eq.${propertyId}`,
+        },
+        (payload) => {
+          console.log('Report realtime:', payload.eventType)
+          invalidateReportsData(queryClient)
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime active: reports')
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime unavailable for reports:', status)
+        }
+      })
+
     return () => {
       supabaseClient.removeChannel(workOrdersChannel)
       supabaseClient.removeChannel(propertyUsersChannel)
       supabaseClient.removeChannel(userUpdatesChannel)
+      supabaseClient.removeChannel(reportsChannel)
     }
   }, [userProfile?.id, userProfile?.role, userProfile?.property_id, queryClient])
 
@@ -790,12 +826,14 @@ const pendingWorkOrdersContextValue = useMemo(
     hasUnseenWorkOrders,
     hasUnseenTechnicians,
     hasUnseenTenants,
+    hasUnseenReports,
     refreshPendingCount,
     refreshPendingTechniciansCount,
     refreshPendingTenantsCount,
     acknowledgeWorkOrders,
     acknowledgeTechnicians,
     acknowledgeTenants,
+    acknowledgeReports,
   }),
   [
     pendingWorkOrdersCount,
@@ -804,12 +842,14 @@ const pendingWorkOrdersContextValue = useMemo(
     hasUnseenWorkOrders,
     hasUnseenTechnicians,
     hasUnseenTenants,
+    hasUnseenReports,
     refreshPendingCount,
     refreshPendingTechniciansCount,
     refreshPendingTenantsCount,
     acknowledgeWorkOrders,
     acknowledgeTechnicians,
     acknowledgeTenants,
+    acknowledgeReports,
   ],
 )
 
@@ -872,6 +912,8 @@ const pendingWorkOrdersContextValue = useMemo(
         )
       case 'Technicians':
         return <Technicians {...alertsNavProps} />
+      case 'Reports':
+        return <Reports {...alertsNavProps} />
       case 'Approvals':
         return <Approvals />
       case 'Profile':
@@ -1006,7 +1048,7 @@ const pendingWorkOrdersContextValue = useMemo(
         />
         
         <div className="flex-1 flex flex-col lg:ml-64">
-          {!['Dashboard', 'Work Orders', 'Tenants', 'Technicians', 'Profile'].includes(activeItem) && (
+          {!['Dashboard', 'Work Orders', 'Tenants', 'Technicians', 'Profile', 'Reports'].includes(activeItem) && (
             <Topbar 
               onMenuToggle={toggleSidebar} 
               onNewPMAccount={handleNewPMAccount} 

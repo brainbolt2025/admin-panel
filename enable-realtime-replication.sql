@@ -3,7 +3,9 @@
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.work_orders;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.reports;
 
 -- Helps UPDATE/DELETE payloads include enough row data for filtered channels
 ALTER TABLE public.users REPLICA IDENTITY FULL;
 ALTER TABLE public.work_orders REPLICA IDENTITY FULL;
+ALTER TABLE public.reports REPLICA IDENTITY FULL;

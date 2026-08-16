@@ -39,8 +39,10 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
   const {
     hasUnseenWorkOrders,
     hasUnseenTenants,
+    hasUnseenReports,
     acknowledgeWorkOrders,
     acknowledgeTenants,
+    acknowledgeReports,
   } = usePendingWorkOrders();
 
   // Navigation items for Super Admin
@@ -54,6 +56,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
 
   // Navigation items for PM
   const pmNavigationItems = [
+    { id: 'Reports', label: 'Reports', icon: FileText },
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
     { id: 'Work Orders', label: 'Work Orders', icon: ClipboardList },
     { id: 'Tenants', label: 'Tenants', icon: Users },
@@ -107,6 +110,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                         onActiveItemChange(item.id);
                         if (item.id === 'Work Orders') acknowledgeWorkOrders();
                         if (item.id === 'Tenants') acknowledgeTenants();
+                        if (item.id === 'Reports') acknowledgeReports();
                       }}
                       className={`
                         w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors
@@ -120,6 +124,12 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                         <Icon className={`w-5 h-5 ${isActive ? 'text-teal-600' : 'text-gray-500'}`} />
                         <span>{item.label}</span>
                       </span>
+                      {item.id === 'Reports' && isPM && hasUnseenReports && (
+                        <span className="ml-3 inline-flex items-center justify-center">
+                          <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
+                          <span className="sr-only">New reports</span>
+                        </span>
+                      )}
                       {item.id === 'Work Orders' && isPM && hasUnseenWorkOrders && (
                         <span className="ml-3 inline-flex items-center justify-center">
                           <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />

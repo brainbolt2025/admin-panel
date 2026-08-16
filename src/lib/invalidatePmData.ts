@@ -17,8 +17,15 @@ export function invalidateTenantsData(queryClient: QueryClient) {
   void queryClient.refetchQueries({ queryKey: ['pendingIds', 'tenants'] })
 }
 
+export function invalidateReportsData(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.reports })
+  void queryClient.invalidateQueries({ queryKey: ['pendingIds', 'reports'] })
+  void queryClient.refetchQueries({ queryKey: ['pendingIds', 'reports'] })
+}
+
 export function invalidateAllPmData(queryClient: QueryClient) {
   invalidateWorkOrdersData(queryClient)
   invalidateTechniciansData(queryClient)
   invalidateTenantsData(queryClient)
+  invalidateReportsData(queryClient)
 }
