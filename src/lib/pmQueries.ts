@@ -471,3 +471,59 @@ export function derivePmWorkOrderStats(workOrders: PmWorkOrder[]): PmWorkOrderSt
     completed: workOrders.filter((order) => order.status === 'Completed').length,
   }
 }
+
+export type ReportRole = 'tenant' | 'technician'
+export type ReportStatus = 'submitted' | 'awaiting_pm_review' | 'completed'
+
+export interface PmReport {
+  id: string
+  display_number: number
+  property_id: string
+  property_name: string | null
+  reporter_id: string
+  reporter_role: ReportRole
+  reporter_name: string | null
+  subject_id: string | null
+  subject_role: ReportRole | null
+  subject_name: string | null
+  work_order_id: string | null
+  category: string
+  status: ReportStatus
+  title: string | null
+  description: string
+  resolved_at: string | null
+  created_at: string
+}
+
+export async function fetchReportsQuery(): Promise<PmReport[]> {
+  const supabaseClient = getAuthenticatedSupabase()
+  const propertyId = await getPmPropertyId()
+  if (!propertyId) return []
+
+  const { data, error } = await supabaseClient
+    .from('reports')
+    .select(
+      'id, display_number, property_id, property_name, reporter_id, reporter_role, reporter_name, subject_id, subject_role, subject_name, work_order_id, category, status, title, description, resolved_at, created_at',
+    )
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as PmReport[]
+}
+
+export async function fetchPendingReportIds(
+  propertyId: string | null | undefined
+): Promise<string[]> {
+  if (!propertyId) return []
+
+  const supabaseClient = getAuthenticatedSupabase()
+  const { data, error } = await supabaseClient
+    .from('reports')
+    .select('id')
+    .eq('property_id', propertyId)
+    .neq('status', 'completed')
+
+  if (error) throw error
+  return (data ?? []).map((row) => row.id).filter(Boolean)
+}

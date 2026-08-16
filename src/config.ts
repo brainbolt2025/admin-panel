@@ -33,5 +33,6 @@ export const config = {
     renewSubscription: `${supabaseUrl}/functions/v1/renew-subscription`,
     updateUserEmail: `${supabaseUrl}/functions/v1/update-user-email`,
     contactSupport: `${supabaseUrl}/functions/v1/contact-support`,
+    createReport: `${supabaseUrl}/functions/v1/create-report`,
   },
 }
