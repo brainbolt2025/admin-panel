@@ -34,5 +34,9 @@ export const config = {
     updateUserEmail: `${supabaseUrl}/functions/v1/update-user-email`,
     contactSupport: `${supabaseUrl}/functions/v1/contact-support`,
     createReport: `${supabaseUrl}/functions/v1/create-report`,
+    createTenantInvites: `${supabaseUrl}/functions/v1/create-tenant-invites`,
   },
+  playStoreUrl:
+    import.meta.env.VITE_PLAY_STORE_URL ||
+    'https://play.google.com/store/apps/details?id=com.asine.app',
 }

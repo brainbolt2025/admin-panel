@@ -82,23 +82,44 @@ serve(async (req) => {
       .eq('id', workOrder.property_id)
       .maybeSingle()
 
-    if (propertyError || !property?.pm_id) {
-      console.error('Property / PM not found:', propertyError)
+    if (propertyError || !property) {
+      console.error('Property not found:', propertyError)
       return new Response(
         JSON.stringify({ success: false, error: 'Property or property manager not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    const { data: pmUser, error: pmError } = await supabaseAdmin
-      .from('users')
-      .select('id, name, email, role')
-      .eq('id', property.pm_id)
-      .eq('role', 'pm')
-      .maybeSingle()
+    let pmUser: { id: string; name: string | null; email: string | null; role: string | null } | null = null
 
-    if (pmError || !pmUser?.email) {
-      console.error('PM user not found:', pmError)
+    if (property.pm_id) {
+      const { data } = await supabaseAdmin
+        .from('users')
+        .select('id, name, email, role')
+        .eq('id', property.pm_id)
+        .eq('role', 'pm')
+        .maybeSingle()
+      pmUser = data
+    }
+
+    if (!pmUser?.email) {
+      const { data } = await supabaseAdmin
+        .from('users')
+        .select('id, name, email, role')
+        .eq('property_id', workOrder.property_id)
+        .eq('role', 'pm')
+        .maybeSingle()
+      pmUser = data
+      if (pmUser?.id && !property.pm_id) {
+        await supabaseAdmin
+          .from('properties')
+          .update({ pm_id: pmUser.id })
+          .eq('id', property.id)
+      }
+    }
+
+    if (!pmUser?.email) {
+      console.error('PM user not found for property:', workOrder.property_id)
       return new Response(
         JSON.stringify({ success: false, error: 'Property manager email not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
