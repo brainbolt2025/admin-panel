@@ -26,8 +26,10 @@ export interface PmTenant {
   created_at?: string
   profile_picture_url?: string | null
   unit_number?: string | null
+  phone?: string | null
   property_name?: string | null
   email_verified?: boolean | null
+  pending_invite?: boolean
 }
 
 export interface PmWorkOrder {
@@ -170,7 +172,7 @@ export async function fetchTenantsQuery(): Promise<TenantsQueryResult> {
 
   const { data: tenantsData, error: tenantsError } = await supabaseClient
     .from('users')
-    .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, property_name, email_verified')
+    .select('id, name, email, role, approved, created_at, profile_picture_url, unit_number, phone, property_name, email_verified')
     .eq('property_id', propertyId)
     .eq('role', 'tenant')
     .order('created_at', { ascending: false })
@@ -186,12 +188,42 @@ export async function fetchTenantsQuery(): Promise<TenantsQueryResult> {
     created_at: tenant.created_at,
     profile_picture_url: tenant.profile_picture_url,
     unit_number: tenant.unit_number,
+    phone: tenant.phone,
     property_name: tenant.property_name,
     email_verified: tenant.email_verified,
+    pending_invite: false,
   }))
 
+  const { data: inviteData } = await supabaseClient
+    .from('tenant_invites')
+    .select('id, email, first_name, last_name, unit_number, phone, property_name, created_at, expires_at')
+    .eq('property_id', propertyId)
+    .is('accepted_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+
+  const existingEmails = new Set(
+    tenants.map((tenant) => tenant.email?.toLowerCase()).filter((email): email is string => Boolean(email)),
+  )
+
+  const pendingInvites: PmTenant[] = (inviteData ?? [])
+    .filter((invite) => !existingEmails.has((invite.email || '').toLowerCase()))
+    .map((invite) => ({
+      id: invite.id,
+      name: [invite.first_name, invite.last_name].filter(Boolean).join(' ') || null,
+      email: invite.email,
+      role: 'tenant',
+      approved: 'pending' as ApprovalStatus,
+      created_at: invite.created_at,
+      unit_number: invite.unit_number,
+      phone: invite.phone,
+      property_name: invite.property_name,
+      email_verified: false,
+      pending_invite: true,
+    }))
+
   const profilePictureUrls = await fetchProfilePictureUrls(tenants)
-  return { tenants, profilePictureUrls }
+  return { tenants: [...pendingInvites, ...tenants], profilePictureUrls }
 }
 
 function transformWorkOrders(ordersData: any[]): PmWorkOrder[] {

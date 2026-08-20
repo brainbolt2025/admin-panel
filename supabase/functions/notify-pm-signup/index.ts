@@ -106,38 +106,37 @@ serve(async (req) => {
       )
     }
 
-    if (!property.pm_id) {
-      console.log('Property has no PM assigned, skipping notification')
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'No PM assigned to property, notification skipped',
-          property_id,
-          property_name: property.name,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      )
+    let pmUser: { id: string; name: string | null; email: string | null; role: string | null } | null = null
+
+    if (property.pm_id) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .eq('id', property.pm_id)
+        .eq('role', 'pm')
+        .maybeSingle()
+      pmUser = data
     }
 
-    // Step 2: Get PM user information
-    console.log('Finding PM user:', property.pm_id)
-    const { data: pmUser, error: pmError } = await supabase
-      .from('users')
-      .select('id, name, email, role')
-      .eq('id', property.pm_id)
-      .eq('role', 'pm')
-      .maybeSingle()
+    if (!pmUser?.email) {
+      const { data } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .eq('property_id', property_id)
+        .eq('role', 'pm')
+        .maybeSingle()
+      pmUser = data
+      if (pmUser?.id && !property.pm_id) {
+        await supabase.from('properties').update({ pm_id: pmUser.id }).eq('id', property.id)
+      }
+    }
 
-    if (pmError || !pmUser || !pmUser.email) {
-      console.error('PM user not found:', pmError)
+    if (!pmUser?.email) {
+      console.error('PM user not found for property:', property_id)
       return new Response(
         JSON.stringify({
           success: false,
           error: 'Property Manager not found or has no email',
-          details: pmError?.message,
         }),
         {
           status: 404,

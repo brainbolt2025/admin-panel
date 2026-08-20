@@ -201,13 +201,19 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const normalizedEmail = email.trim().toLowerCase()
+    let tenantName = (name || '').trim()
+    let tenantUnit: string | null = (unit_number || '').trim() || null
+    let tenantPhone: string | null = null
+    let approvedStatus: 'pending' | 'approved' = 'pending'
+    let pendingInviteId: string | null = null
 
     // Step 1: Check if user already exists
     console.log('Step 1: Checking if user already exists')
     const { data: existingUser } = await supabase
       .from('users')
       .select('id, email, role')
-      .eq('email', email)
+      .ilike('email', normalizedEmail)
       .maybeSingle()
 
     if (existingUser) {
@@ -222,12 +228,31 @@ serve(async (req) => {
       )
     }
 
+    const { data: pendingInvite } = await supabase
+      .from('tenant_invites')
+      .select('id, email, first_name, last_name, phone, unit_number, property_id, property_name, expires_at')
+      .ilike('email', normalizedEmail)
+      .is('accepted_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle()
+
     // Step 2: Resolve property_id and property_name
-    // If property_id is provided, fetch property_name
-    // If property_name is provided, fetch property_id
     let finalPropertyId: string | null = property_id || null
     let finalPropertyName: string | null = property_name || null
 
+    if (pendingInvite?.property_id) {
+      pendingInviteId = pendingInvite.id
+      finalPropertyId = pendingInvite.property_id
+      finalPropertyName = pendingInvite.property_name || finalPropertyName
+      tenantUnit = pendingInvite.unit_number || tenantUnit
+      tenantPhone = (pendingInvite.phone || '').trim() || null
+      const inviteName = [pendingInvite.first_name, pendingInvite.last_name].filter(Boolean).join(' ')
+      if (inviteName) tenantName = inviteName
+      approvedStatus = 'approved'
+      console.log('Converting pending tenant invite:', pendingInviteId)
+    }
+
+    if (!pendingInviteId) {
     if (finalPropertyId && !finalPropertyName) {
       // Fetch property_name from property_id
       console.log('Fetching property name from property_id:', finalPropertyId)
@@ -292,6 +317,7 @@ serve(async (req) => {
         }
       }
     }
+    }
 
     // Validate that we have both property_id and property_name
     if (!finalPropertyId) {
@@ -331,11 +357,11 @@ serve(async (req) => {
         email,
         password,
         user_metadata: {
-          name,
+          name: tenantName,
           role: 'tenant',
           property_id: finalPropertyId,  // Include as string for metadata
           property_name: finalPropertyName,
-          unit_number: unit_number || null
+          unit_number: tenantUnit
         },
         email_confirm: false, // Send confirmation email to tenant
       })
@@ -409,13 +435,14 @@ serve(async (req) => {
       const updateResult = await supabase
         .from('users')
         .update({
-          name,
-          email,
+          name: tenantName,
+          email: normalizedEmail,
           role: 'tenant',
           property_id: finalPropertyId,
           property_name: finalPropertyName,
-          unit_number: unit_number || null,
-          approved: 'pending' // Default to pending approval
+          unit_number: tenantUnit,
+          phone: tenantPhone,
+          approved: approvedStatus
         })
         .eq('id', authUserId)
         .select('id, name, email, role, property_id, property_name, unit_number, approved')
@@ -439,13 +466,14 @@ serve(async (req) => {
             .from('users')
             .insert({
               id: authUserId,
-              name,
-              email,
+              name: tenantName,
+              email: normalizedEmail,
               role: 'tenant',
               property_id: finalPropertyId,
               property_name: finalPropertyName,
-              unit_number: unit_number || null,
-              approved: 'pending'
+              unit_number: tenantUnit,
+              phone: tenantPhone,
+              approved: approvedStatus
             })
             .select('id, name, email, role, property_id, property_name, unit_number, approved')
             .single()
@@ -471,11 +499,11 @@ serve(async (req) => {
           success: true,
           warning: 'Auth user created but database record may be incomplete',
           user_id: authUserId,
-          email,
-          name,
+          email: normalizedEmail,
+          name: tenantName,
           property_id: finalPropertyId,
           property_name: finalPropertyName,
-          unit_number: unit_number || null,
+          unit_number: tenantUnit,
           database_error: userError.message,
           message: 'Tenant auth user created. You may need to manually fix the database record.',
           troubleshooting: 'Check Supabase logs and run: SELECT * FROM users WHERE id = \'' + authUserId + '\''
@@ -489,7 +517,18 @@ serve(async (req) => {
 
     console.log('✅ Tenant created successfully:', userData?.id || authUserId)
 
+    if (pendingInviteId) {
+      const { error: acceptInviteError } = await supabase
+        .from('tenant_invites')
+        .update({ accepted_at: new Date().toISOString() })
+        .eq('id', pendingInviteId)
+      if (acceptInviteError) {
+        console.warn('Failed to mark tenant invite accepted:', acceptInviteError)
+      }
+    }
+
     // Step 4.5: Notify PM about new tenant signup (non-blocking)
+    if (!pendingInviteId) {
     try {
       console.log('Notifying PM about new tenant signup')
       const notifyPMResponse = await fetch(`${supabaseUrl}/functions/v1/notify-pm-signup`, {
@@ -501,10 +540,10 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           property_id: finalPropertyId,
-          user_name: name,
-          user_email: email,
+          user_name: tenantName,
+          user_email: normalizedEmail,
           user_role: 'tenant',
-          unit_number: unit_number || undefined,
+          unit_number: tenantUnit || undefined,
         }),
       })
       
@@ -518,6 +557,7 @@ serve(async (req) => {
     } catch (pmNotifyError) {
       console.warn('⚠️ PM notification error (non-critical):', pmNotifyError)
       // Continue - PM notification failure shouldn't block tenant creation
+    }
     }
 
     // Step 5: Generate verification link and send custom verification email
@@ -578,11 +618,16 @@ serve(async (req) => {
             // Build tenant-specific email HTML
             const htmlBody = asineEmailHtml({
               title: 'Welcome to Asine',
-              greeting: `Hi ${name},`,
-              paragraphs: [
-                `Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.`,
-                'After verifying your email, your account will be reviewed by your property manager before you can sign in.',
-              ],
+              greeting: `Hi ${tenantName},`,
+              paragraphs: pendingInviteId
+                ? [
+                    `Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.`,
+                    'Your property manager already invited you, so you can sign in after verifying.',
+                  ]
+                : [
+                    `Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.`,
+                    'After verifying your email, your account will be reviewed by your property manager before you can sign in.',
+                  ],
               cta: { label: 'Verify Account', href: verifyLink },
               noticeHtml: '<strong>Important:</strong> This verification link expires in 24 hours.',
               secondaryNote: "If you didn't create an account, please ignore this email.",
@@ -591,7 +636,7 @@ serve(async (req) => {
             
             const textBody = `Welcome to Asine
 
-Hi ${name},
+Hi ${tenantName},
 
 Please verify your email to activate your tenant account at ${finalPropertyName || 'your property'}.
 
@@ -599,7 +644,9 @@ Verification Link: ${verifyLink}
 
 This link expires in 24 hours.
 
-After verifying your email, your account will be reviewed by your property manager before you can sign in.
+After verifying your email, ${pendingInviteId
+  ? 'you can sign in. Your property manager already invited you.'
+  : 'your account will be reviewed by your property manager before you can sign in.'}
 
 If you didn't create an account, please ignore this email.`
             
@@ -664,11 +711,11 @@ If you didn't create an account, please ignore this email.`
         JSON.stringify({ 
           success: true, 
           user_id: authUserId,
-          email,
-          name,
+          email: normalizedEmail,
+          name: tenantName,
           property_id: finalPropertyId,
           property_name: finalPropertyName,
-          unit_number: unit_number || null,
+          unit_number: tenantUnit,
           email_sent: emailSent,
           email_error: emailError || undefined,
           warning: 'Tenant created but failed to fetch access token.',
@@ -690,11 +737,12 @@ If you didn't create an account, please ignore this email.`
       JSON.stringify({ 
         success: true, 
         user_id: authUserId,
-        email,
-        name,
+        email: normalizedEmail,
+        name: tenantName,
         property_id: finalPropertyId,
         property_name: finalPropertyName,
-        unit_number: unit_number || null,
+        unit_number: tenantUnit,
+        invite_converted: Boolean(pendingInviteId),
         access_token: tokenResult.access_token,
         refresh_token: tokenResult.refresh_token,
         token_type: tokenResult.token_type,

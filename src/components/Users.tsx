@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, UserPlus } from 'lucide-react';
+import { Search, ChevronDown, Check, X as XIcon, User as UserIcon, Users as UsersIcon, Mail, Calendar, Camera, Info, MapPin, Shield, Clock, UserPlus, QrCode } from 'lucide-react';
 import { getAuthenticatedSupabase } from '../lib/supabase';
 import { config } from '../config';
 import InviteNewTenants from './InviteNewTenants';
+import ScanQr from './ScanQr';
 import tenantsEmpty from '../assets/tenants-empty.png';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchTenantsQuery } from '../lib/pmQueries';
 import { invalidateTenantsData } from '../lib/invalidatePmData';
+import { refreshTenantInvite, tenantInviteQrLink } from '../lib/tenantInvitesApi';
+import { downloadQrPng, printQr } from '../lib/qrImage';
 import AlertsBell from './AlertsBell';
 import {
   APPROVAL_STATUS,
@@ -30,8 +33,10 @@ interface Tenant {
   created_at?: string;
   profile_picture_url?: string | null;
   unit_number?: string | null;
+  phone?: string | null;
   property_name?: string | null;
   email_verified?: boolean | null;
+  pending_invite?: boolean;
 }
 
 interface UsersProps {
@@ -117,6 +122,13 @@ const Users = ({
 
   // State for invite new tenants form
   const [showInviteNewTenants, setShowInviteNewTenants] = useState(false);
+  const [showDownloadQr, setShowDownloadQr] = useState(false);
+  const [inviteQr, setInviteQr] = useState<{
+    email: string;
+    name: string | null;
+    link: string;
+  } | null>(null);
+  const [loadingInviteQr, setLoadingInviteQr] = useState(false);
 
   // Update search term when selectedTenantFilter prop changes
   useEffect(() => {
@@ -137,7 +149,8 @@ const Users = ({
     .filter((tenant) => {
       const matchesSearch = 
         tenant.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tenant.email?.toLowerCase().includes(searchTerm.toLowerCase());
+        tenant.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        tenant.unit_number?.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === 'All' || 
         (statusFilter === 'Approved' && isApproved(tenant.approved)) ||
@@ -370,8 +383,58 @@ const Users = ({
     }
   };
 
+  const handleShowInviteQr = async (tenant: Tenant) => {
+    setLoadingInviteQr(true);
+    try {
+      const data = await refreshTenantInvite(tenant.id);
+      const result = data.results?.[0];
+      const link = result ? tenantInviteQrLink(result) : '';
+      if (!data.success || !result || !link) {
+        alert(result?.error || data.error || 'Could not generate QR. Please try again.');
+        return;
+      }
+      invalidateTenantsData(queryClient);
+      setInviteQr({
+        email: result.email || tenant.email || '',
+        name: tenant.name,
+        link,
+      });
+    } catch (err) {
+      console.error('Error generating invite QR:', err);
+      alert(err instanceof Error ? err.message : 'Could not generate QR. Please try again.');
+    } finally {
+      setLoadingInviteQr(false);
+    }
+  };
+
+  const handleCancelInvite = async (tenant: Tenant) => {
+    if (!window.confirm(`Cancel the invitation to ${tenant.email || 'this tenant'}?`)) {
+      return;
+    }
+    try {
+      const supabaseClient = getAuthenticatedSupabase();
+      const { error } = await supabaseClient
+        .from('tenant_invites')
+        .delete()
+        .eq('id', tenant.id);
+
+      if (error) throw error;
+      invalidateTenantsData(queryClient);
+    } catch (err) {
+      console.error('Error cancelling tenant invite:', err);
+      alert('Could not cancel this invitation. Please try again.');
+    }
+  };
+
   // Handle view details
   const handleViewDetails = async (tenant: Tenant) => {
+    if (tenant.pending_invite) {
+      setTenantDetails(tenant);
+      setDetailsModalOpen(true);
+      setLoadingDetails(false);
+      return;
+    }
+
     setLoadingDetails(true);
     setDetailsModalOpen(true);
     
@@ -456,7 +519,14 @@ const Users = ({
 
   // Show invite form if state is set
   if (showInviteNewTenants) {
-    return <InviteNewTenants onBack={() => setShowInviteNewTenants(false)} />;
+    return (
+      <InviteNewTenants
+        onBack={() => setShowInviteNewTenants(false)}
+        onNavigateToWorkOrder={onNavigateToWorkOrder}
+        onNavigateToTechnicians={onNavigateToTechnicians}
+        onNavigateToTenants={onNavigateToTenants}
+      />
+    );
   }
 
   return (
@@ -508,14 +578,28 @@ const Users = ({
             </div>
             {isPM && (
               <button
-                onClick={() => setShowInviteNewTenants(true)}
-                className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                type="button"
+                onClick={() => setShowDownloadQr(true)}
+                className="flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors"
               >
-                <UserPlus className="w-4 h-4" />
-                Invite New Tenants
+                <QrCode className="w-4 h-4" />
+                Generate QR
               </button>
             )}
           </div>
+
+          {isPM && (
+            <div className="flex justify-center mb-6">
+              <button
+                type="button"
+                onClick={() => setShowInviteNewTenants(true)}
+                className="flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white text-lg font-semibold py-3.5 px-10 rounded-xl shadow-sm transition-colors"
+              >
+                <UserPlus className="w-6 h-6" />
+                Add tenants
+              </button>
+            </div>
+          )}
 
           {/* Status Filter */}
           <div className="mb-6 flex items-center gap-2">
@@ -605,6 +689,8 @@ const Users = ({
                               <UserIcon className="w-5 h-5 text-teal-600" />
                             </div>
                           )}
+                          {!tenant.pending_invite && (
+                            <>
                           <input
                             ref={fileInputRef}
                             type="file"
@@ -624,6 +710,8 @@ const Users = ({
                               <Camera className="w-4 h-4 text-white" />
                             )}
                           </label>
+                            </>
+                          )}
                         </div>
                         <div className="text-sm font-medium text-gray-900">
                           {tenant.name || 'N/A'}
@@ -637,7 +725,12 @@ const Users = ({
                       </div>
                     </td>
                     <td className="py-4 px-6">
-                      {isApproved(tenant.approved) ? (
+                      {tenant.pending_invite ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 rounded-md text-xs font-medium">
+                          <QrCode className="w-3 h-3" />
+                          Pending invite
+                        </span>
+                      ) : isApproved(tenant.approved) ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
                           <Check className="w-3 h-3" />
                           Approved
@@ -658,7 +751,29 @@ const Users = ({
                       {formatDate(tenant.created_at)}
                     </td>
                     <td className="py-4 px-6">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {tenant.pending_invite ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={loadingInviteQr}
+                              onClick={() => void handleShowInviteQr(tenant)}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-teal-600 text-white hover:bg-teal-700 rounded transition-colors disabled:opacity-40"
+                            >
+                              <QrCode className="w-3 h-3" />
+                              {loadingInviteQr ? 'Loading…' : 'Show QR'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCancelInvite(tenant)}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-red-600 text-white hover:bg-red-700 rounded transition-colors"
+                            >
+                              <XIcon className="w-3 h-3" />
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
                         <button 
                           onClick={() => handleViewDetails(tenant)}
                           className="inline-flex items-center gap-1 text-xs px-3 py-1 bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors"
@@ -699,6 +814,8 @@ const Users = ({
                             <Check className="w-3 h-3" />
                             Approve
                           </button>
+                        )}
+                          </>
                         )}
                       </div>
                     </td>
@@ -925,7 +1042,7 @@ const Users = ({
                   >
                     Close
                   </button>
-                  {!isApproved(tenantDetails.approved) && (
+                  {!tenantDetails.pending_invite && !isApproved(tenantDetails.approved) && (
                     <button
                       onClick={() => {
                         setDetailsModalOpen(false);
@@ -937,7 +1054,7 @@ const Users = ({
                       Approve Tenant
                     </button>
                   )}
-                  {!isRejected(tenantDetails.approved) && (
+                  {!tenantDetails.pending_invite && !isRejected(tenantDetails.approved) && (
                     <button
                       onClick={() => {
                         setDetailsModalOpen(false);
@@ -952,6 +1069,101 @@ const Users = ({
                 </div>
               </>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {showDownloadQr && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowDownloadQr(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Download app QR</h2>
+              <button
+                type="button"
+                onClick={() => setShowDownloadQr(false)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Tenants scan this to install Asine from Google Play. Print it or show it on a screen.
+            </p>
+            <div className="flex justify-center mb-4">
+              <ScanQr label="Scan to download the Asine app" data={config.playStoreUrl} size={192} />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void downloadQrPng(config.playStoreUrl, 'asine-app-download')}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Download PNG
+              </button>
+              <button
+                type="button"
+                onClick={() => printQr(config.playStoreUrl, 'Download Asine')}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inviteQr && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setInviteQr(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Finish onboarding QR</h2>
+              <button
+                type="button"
+                onClick={() => setInviteQr(null)}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-1">
+              {inviteQr.name || inviteQr.email}
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Scan after the app is installed to set a password and join this property.
+            </p>
+            <div className="flex justify-center mb-4">
+              <ScanQr label="Scan to finish setup" data={inviteQr.link} size={192} />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void downloadQrPng(inviteQr.link, `asine-invite-${inviteQr.email}`)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Download PNG
+              </button>
+              <button
+                type="button"
+                onClick={() => printQr(inviteQr.link, `Asine invite for ${inviteQr.email}`)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Print
+              </button>
+            </div>
           </div>
         </div>
       )}
