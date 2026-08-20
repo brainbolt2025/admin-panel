@@ -389,7 +389,7 @@ const Users = ({
       const data = await refreshTenantInvite(tenant.id);
       const result = data.results?.[0];
       const link = result ? tenantInviteQrLink(result) : '';
-      if (!data.success || !link) {
+      if (!data.success || !result || !link) {
         alert(result?.error || data.error || 'Could not generate QR. Please try again.');
         return;
       }
