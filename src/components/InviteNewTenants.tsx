@@ -279,7 +279,7 @@ const InviteNewTenants = ({
 
       invalidateTenantsData(queryClient);
       const qrLink = result ? tenantInviteQrLink(result) : '';
-      if (generateQr && qrLink) {
+      if (generateQr && result && qrLink) {
         setCreatedInvite(result);
         setManualNotice('Invitation created. Have the tenant scan this QR after installing the app.');
       } else {
