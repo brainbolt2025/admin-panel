@@ -5,8 +5,27 @@
       "namespace": "android_app",
       "package_name": "com.asine.app",
       "sha256_cert_fingerprints": [
-        "E7:09:07:75:78:9D:5A:C9:D3:BC:D5:84:6A:1F:57:E9:9F:11:BF:6B:FC:9F:B5:D0:97:21:2A:F9:9A:F8:90:2F",
+        "E7:09:07:75:78:9D:5A:C9:D3:BC:D5:84:6A:1F:57:E9:9F:11:BF:6B:FC:9F:B5:D0:97:21:2A:F9:9A:F8:90:2F"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.asine.app",
+      "sha256_cert_fingerprints": [
         "00:B0:AB:6E:27:1D:39:4F:40:6B:61:A6:A7:96:40:27:BD:0D:D2:4C:A8:EC:D6:37:E5:B0:0D:FD:64:E9:68:0C"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.asine.app",
+      "sha256_cert_fingerprints": [
+        "20:BE:D4:0F:1E:9D:F0:DF:C3:EF:7D:0F:5F:C5:47:D1:C6:8D:E8:A4:06:B8:AE:F7:A7:61:C5:D7:FD:4D:A5:30"
       ]
     }
   }
