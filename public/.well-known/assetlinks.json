@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.asine.app",
+      "sha256_cert_fingerprints": [
+        "E7:09:07:75:78:9D:5A:C9:D3:BC:D5:84:6A:1F:57:E9:9F:11:BF:6B:FC:9F:B5:D0:97:21:2A:F9:9A:F8:90:2F"
+      ]
+    }
+  }
+]
