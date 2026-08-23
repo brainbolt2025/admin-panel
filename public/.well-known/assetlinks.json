@@ -28,5 +28,15 @@
         "20:BE:D4:0F:1E:9D:F0:DF:C3:EF:7D:0F:5F:C5:47:D1:C6:8D:E8:A4:06:B8:AE:F7:A7:61:C5:D7:FD:4D:A5:30"
       ]
     }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.asine.app",
+      "sha256_cert_fingerprints": [
+        "A0:73:DC:3B:65:0D:A6:10:D5:46:AE:5F:87:64:DD:BE:DC:F5:24:A9:5A:70:C6:C0:6E:81:19:55:3A:ED:60:24"
+      ]
+    }
   }
 ]
