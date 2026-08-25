@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Login from './components/Login'
+import GuestLanding from './components/GuestLanding'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './components/Dashboard'
@@ -77,6 +78,8 @@ function App() {
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showInvitePM, setShowInvitePM] = useState(false)
   const [showSubscription, setShowSubscription] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const [subscriptionBackLabel, setSubscriptionBackLabel] = useState('Back to home')
   const [showRenewSubscription, setShowRenewSubscription] = useState(false)
   const [showResetPassword, setShowResetPassword] = useState(false)
   const paymentPollStartedRef = useRef(false)
@@ -102,10 +105,13 @@ function App() {
           propertyName: url.searchParams.get('property') ?? '',
         })
         setShowSubscription(true)
+        setSubscriptionBackLabel('Back to home')
 
         if (window.history.replaceState) {
           window.history.replaceState(null, '', `${url.origin}${url.pathname}`)
         }
+      } else if (url.pathname.includes('/login')) {
+        setShowLogin(true)
       }
     } catch (error) {
       console.error('Failed to parse URL for subscription prefill:', error)
@@ -500,6 +506,7 @@ function App() {
           if (!credentials) {
             console.warn('App: No pending PM signup credentials after payment; falling back to login')
             setPmSignupLoginHint()
+            setShowLogin(true)
             return
           }
 
@@ -511,6 +518,7 @@ function App() {
           if (error || !data.session?.user) {
             console.error('App: Auto-login after PM signup failed:', error)
             setPmSignupLoginHint()
+            setShowLogin(true)
             return
           }
 
@@ -999,6 +1007,7 @@ const pendingWorkOrdersContextValue = useMemo(
         {emailVerificationBanner}
         <Subscription
           onSuccess={handleSubscriptionSuccess}
+          backLabel={subscriptionBackLabel}
           onBack={() => {
             setShowSubscription(false)
             setSubscriptionPrefill({
@@ -1006,6 +1015,9 @@ const pendingWorkOrdersContextValue = useMemo(
               email: '',
               propertyName: '',
             })
+            if (subscriptionBackLabel === 'Back to sign in') {
+              setShowLogin(true)
+            }
           }}
           initialName={subscriptionPrefill.name}
           initialEmail={subscriptionPrefill.email}
@@ -1017,17 +1029,38 @@ const pendingWorkOrdersContextValue = useMemo(
 
   // Show login screen if not logged in
   if (!isLoggedIn) {
+    if (!showLogin) {
+      return (
+        <>
+          {emailVerificationBanner}
+          <GuestLanding
+            onGetStarted={() => {
+              setSubscriptionPrefill({
+                name: '',
+                email: '',
+                propertyName: '',
+              })
+              setSubscriptionBackLabel('Back to home')
+              setShowSubscription(true)
+            }}
+            onSignIn={() => setShowLogin(true)}
+          />
+        </>
+      )
+    }
     return (
       <>
         {emailVerificationBanner}
         <Login
           onLogin={handleLogin}
+          onBackToHome={() => setShowLogin(false)}
           onShowSubscription={() => {
             setSubscriptionPrefill({
               name: '',
               email: '',
               propertyName: '',
             })
+            setSubscriptionBackLabel('Back to sign in')
             setShowSubscription(true)
           }}
         />

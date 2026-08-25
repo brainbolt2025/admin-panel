@@ -8,6 +8,7 @@ import logoFinal from '../assets/Logo-Final.png';
 interface SubscriptionProps {
   onSuccess?: () => void;
   onBack?: () => void;
+  backLabel?: string;
   initialName?: string;
   initialEmail?: string;
   initialPropertyName?: string;
@@ -15,6 +16,7 @@ interface SubscriptionProps {
 
 const Subscription = ({
   onBack,
+  backLabel = 'Back to sign in',
   initialName = '',
   initialEmail = '',
   initialPropertyName = '',
@@ -277,7 +279,7 @@ const Subscription = ({
             className="text-gray-500 hover:text-teal-600 transition-colors flex items-center justify-center gap-2 mx-auto"
           >
             <ArrowRight className="w-4 h-4 rotate-180" />
-            Back to sign in
+            {backLabel}
           </button>
         </div>
       )}
