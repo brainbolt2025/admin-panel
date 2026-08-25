@@ -18,3 +18,13 @@ body {
   min-height: 100vh;
 }
 
+.bg-asine-map {
+  background-color: #f3f6f5;
+  background-image: url("data:image/svg+xml,%3Csvg width='160' height='160' viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%232c6e59' stroke-width='0.75' stroke-opacity='0.12'%3E%3Cpath d='M0 30h160M0 70h160M0 110h160M0 140h160M20 0v160M60 0v160M100 0v160M140 0v160M40 30l60 40M0 110l60-40M100 70l40 40M20 140l80-70'/%3E%3Cpath d='M10 10h40v40H10zM90 90h50v40H90z' stroke-dasharray='3 3'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.bg-asine-hero-map {
+  background-image: radial-gradient(circle at 50% 50%, rgba(27, 77, 62, 0.85), #0d2b23),
+    url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%2352b788' stroke-width='0.8' stroke-opacity='0.18'%3E%3Cpath d='M0 20h120M0 50h120M0 85h120M0 105h120M15 0v120M45 0v120M75 0v120M105 0v120M30 20l45 30M0 85l45-35M75 50l30 35M15 105l60-50'/%3E%3C/g%3E%3C/svg%3E");
+}
+

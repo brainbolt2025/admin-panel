@@ -33,6 +33,7 @@ export const config = {
     renewSubscription: `${supabaseUrl}/functions/v1/renew-subscription`,
     updateUserEmail: `${supabaseUrl}/functions/v1/update-user-email`,
     contactSupport: `${supabaseUrl}/functions/v1/contact-support`,
+    addToWaitlist: `${supabaseUrl}/functions/v1/add-to-waitlist`,
     createReport: `${supabaseUrl}/functions/v1/create-report`,
     createTenantInvites: `${supabaseUrl}/functions/v1/create-tenant-invites`,
   },

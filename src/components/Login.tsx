@@ -15,9 +15,10 @@ import logoFinal from '../assets/Logo-Final.png';
 interface LoginProps {
   onLogin: () => void;
   onShowSubscription?: () => void;
+  onBackToHome?: () => void;
 }
 
-const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
+const Login = ({ onLogin, onShowSubscription, onBackToHome }: LoginProps) => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -223,6 +224,17 @@ const Login = ({ onLogin, onShowSubscription }: LoginProps) => {
       <div className="w-full max-w-md">
         {/* Login Card */}
         <div className="bg-white rounded-xl shadow-sm p-8">
+          {onBackToHome && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={onBackToHome}
+                className="text-sm text-gray-500 hover:text-teal-700 transition-colors"
+              >
+                ← Back to home
+              </button>
+            </div>
+          )}
           <div className="flex justify-center mb-8">
             <AsineLogo size="login" src={logoFinal} />
           </div>
