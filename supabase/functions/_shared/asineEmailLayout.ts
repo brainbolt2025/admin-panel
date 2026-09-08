@@ -4,6 +4,9 @@
  */
 
 const BRAND_GREEN = '#1a3c34'
+const ACCENT_TEAL = '#52b788'
+const CARD_BG = '#eef8f3'
+const CARD_BORDER = '#c5e4d4'
 const LINK_TEAL = '#0f766e'
 const TEXT = '#1f2933'
 const MUTED = '#666666'
@@ -139,9 +142,12 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
             </td>
           </tr>
         </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:${CARD_BG};border:1px solid ${CARD_BORDER};border-radius:16px;box-shadow:0 4px 24px rgba(26,60,52,0.10);overflow:hidden;">
           <tr>
-            <td style="padding:36px 32px;">
+            <td height="8" bgcolor="${ACCENT_TEAL}" style="background-color:${ACCENT_TEAL};height:8px;font-size:1px;line-height:1px;mso-line-height-rule:exactly;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td bgcolor="${CARD_BG}" style="padding:36px 32px;background-color:${CARD_BG};">
               <h1 style="margin:0 0 20px 0;color:${BRAND_GREEN};font-size:26px;line-height:1.25;font-weight:bold;">
                 ${opts.title}
               </h1>

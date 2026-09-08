@@ -85,6 +85,10 @@ export function toUserFacingError(
     return 'Incorrect email or password. Please try again.'
   }
 
+  if (lower.includes('user not found')) {
+    return 'This reset link is no longer valid. Please request a new password reset email.'
+  }
+
   if (lower.includes('too many requests')) {
     return 'Too many attempts. Please wait a moment and try again.'
   }

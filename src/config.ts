@@ -34,6 +34,7 @@ export const config = {
     updateUserEmail: `${supabaseUrl}/functions/v1/update-user-email`,
     contactSupport: `${supabaseUrl}/functions/v1/contact-support`,
     addToWaitlist: `${supabaseUrl}/functions/v1/add-to-waitlist`,
+    sendSingleEmail: `${supabaseUrl}/functions/v1/send-single-email`,
     createReport: `${supabaseUrl}/functions/v1/create-report`,
     createTenantInvites: `${supabaseUrl}/functions/v1/create-tenant-invites`,
   },
