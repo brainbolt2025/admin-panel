@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { toUserFacingError } from '../lib/userFacingError';
 
 interface ResetPasswordProps {
   onComplete: () => void;
@@ -95,7 +96,9 @@ const ResetPassword = ({ onComplete }: ResetPasswordProps) => {
 
       if (error) {
         console.error('Password reset failed:', error);
-        setErrorMessage(error.message || 'Unable to reset your password. The link may have expired.');
+        setErrorMessage(
+          toUserFacingError(error, 'Unable to reset your password. The link may have expired.')
+        );
         setIsSubmitting(false);
         return;
       }

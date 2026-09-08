@@ -18,7 +18,9 @@ import SubscriptionCancellationBanner from './components/SubscriptionCancellatio
 import RenewSubscription from './components/RenewSubscription'
 import EmailVerificationBanner from './components/EmailVerificationBanner'
 import Waitlist from './components/Waitlist'
+import ComposeEmail from './components/ComposeEmail'
 import ResetPassword from './components/ResetPassword'
+import SplashScreen from './components/SplashScreen'
 import { getAuthenticatedSupabase, supabase, isPasswordRecoveryLanding } from './lib/supabase'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 import { queryKeys } from './lib/queryKeys'
@@ -902,6 +904,15 @@ const pendingWorkOrdersContextValue = useMemo(
         return <PropertyManagers />
       case 'Waitlist':
         return <Waitlist />
+      case 'Send Email':
+        return userProfile?.role === 'super_admin' ? (
+          <ComposeEmail />
+        ) : (
+          <Dashboard
+            onNavigateToTenant={handleNavigateToTenant}
+            {...alertsNavProps}
+          />
+        )
       case 'Work Orders':
         return (
           <WorkOrders
@@ -950,19 +961,11 @@ const pendingWorkOrdersContextValue = useMemo(
     )
   }
 
-  // Show loading state while checking authentication or finalizing signup payment
   if (isCheckingAuth || isFinalizingSignupPayment) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">
-            {isFinalizingSignupPayment
-              ? 'Activating your account...'
-              : 'Checking authentication...'}
-          </p>
-        </div>
-      </div>
+      <SplashScreen
+        caption={isFinalizingSignupPayment ? 'Activating your account...' : undefined}
+      />
     )
   }
 
