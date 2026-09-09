@@ -49,7 +49,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
   const adminNavigationItems = [
     { id: 'Dashboard', label: 'Dashboard', icon: Grid3X3 },
     { id: 'PM Accounts', label: 'PM Accounts', icon: Shield },
-    { id: 'Waitlist', label: 'PM Waitlist', icon: Mail },
+    { id: 'Waitlist', label: 'Inquiries', icon: Mail },
     { id: 'Send Email', label: 'Send Email', icon: Send },
     { id: 'Properties', label: 'Properties', icon: Building },
     { id: 'Audit Logs', label: 'Audit Logs', icon: FileText },

@@ -129,7 +129,7 @@ serve(async (req) => {
     if (fetchError) {
       console.error('Error fetching waitlist:', fetchError)
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to fetch waitlist entries' }),
+        JSON.stringify({ success: false, error: 'Failed to fetch inquiries' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -138,7 +138,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'No waitlist entries found to send emails to',
+          message: 'No inquiries found to send emails to',
           total: 0,
           sent: 0,
           failed: 0,
