@@ -14,6 +14,51 @@ interface WaitlistRequest {
   property_name: string
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+async function sendMailgunMessage(opts: {
+  mailgunUrl: string
+  authHeader: string
+  from: string
+  to: string
+  subject: string
+  html: string
+  text: string
+  replyTo?: string
+}): Promise<boolean> {
+  const formData = new FormData()
+  formData.append('from', opts.from)
+  formData.append('to', opts.to)
+  formData.append('subject', opts.subject)
+  formData.append('html', opts.html)
+  formData.append('text', opts.text)
+  if (opts.replyTo) formData.append('h:Reply-To', opts.replyTo)
+
+  const mailgunResponse = await fetch(opts.mailgunUrl, {
+    method: 'POST',
+    headers: { Authorization: opts.authHeader },
+    body: formData,
+  })
+
+  if (!mailgunResponse.ok) {
+    const errorText = await mailgunResponse.text().catch(() => 'Unknown error')
+    console.error('Mailgun error:', {
+      to: opts.to,
+      status: mailgunResponse.status,
+      error: errorText,
+    })
+    return false
+  }
+
+  return true
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -29,7 +74,7 @@ serve(async (req) => {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Thank You - Asine Waitlist</title>
+          <title>Thank You - Asine</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -65,7 +110,7 @@ serve(async (req) => {
           <div class="container">
             <div class="checkmark">✓</div>
             <h1>Thank You!</h1>
-            <p>You've been successfully added to the Asine waitlist. We'll be in touch soon!</p>
+            <p>We've received your message and will follow up shortly.</p>
             <p style="margin-top: 2rem; font-size: 1rem; opacity: 0.7;">Check your email for a confirmation message.</p>
           </div>
         </body>
@@ -188,7 +233,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Email already registered on waitlist',
+          error: 'We have already received a message from this email. We will follow up shortly.',
           id: existing.id
         }),
         { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -210,7 +255,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Failed to add to waitlist',
+          error: 'Unable to send your message. Please try again.',
           details: insertError.message 
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -220,7 +265,7 @@ serve(async (req) => {
     if (!waitlistEntry) {
       console.error('Waitlist entry created but data is null')
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to create waitlist entry' }),
+        JSON.stringify({ success: false, error: 'Unable to send your message. Please try again.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -233,101 +278,108 @@ serve(async (req) => {
     const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
 
     if (MAILGUN_DOMAIN && MAILGUN_API_KEY) {
+      const mailgunBaseUrl = MAILGUN_REGION === 'eu'
+        ? 'https://api.eu.mailgun.net/v3'
+        : 'https://api.mailgun.net/v3'
+      const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
+      const authHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
+      const fromAddress = `Asine <noreply@${MAILGUN_DOMAIN}>`
+      const leadInbox = `jp@${MAILGUN_DOMAIN}`
+      const safePropertyName = escapeHtml(property_name.trim())
+      const safeEmail = escapeHtml(email.toLowerCase())
+
       try {
-        const mailgunBaseUrl = MAILGUN_REGION === 'eu' 
-          ? 'https://api.eu.mailgun.net/v3'
-          : 'https://api.mailgun.net/v3'
-        const mailgunUrl = `${mailgunBaseUrl}/${MAILGUN_DOMAIN}/messages`
-        const authHeader = `Basic ${btoa(`api:${MAILGUN_API_KEY}`)}`
-
-        const formData = new FormData()
-        formData.append('from', `Asine <noreply@${MAILGUN_DOMAIN}>`)
-        formData.append('to', email)
-        formData.append('subject', 'Thank you for joining the Asine waitlist!')
-
-        const htmlBody = asineEmailHtml({
-          title: 'Thank You for Joining the Asine Waitlist!',
-          greeting: 'Hello,',
-          paragraphs: [
-            `Thank you for signing up for the Asine Property Management waitlist! We're excited to have <strong>${property_name}</strong> join our community.`,
-            "We've received your interest and have added you to our waitlist. We'll keep you updated as we move forward.",
-          ],
-        })
-
-        const textBody = `Thank You for Joining the Asine Waitlist!
+        const confirmationSent = await sendMailgunMessage({
+          mailgunUrl,
+          authHeader,
+          from: fromAddress,
+          to: email,
+          subject: 'Thanks for reaching out to Asine',
+          html: asineEmailHtml({
+            title: 'Thanks for reaching out',
+            greeting: 'Hello,',
+            paragraphs: [
+              `We received your message about <strong>${safePropertyName}</strong>.`,
+              "We'll follow up shortly. If you'd like to get started right away, you can also activate a plan on sycnmore.com.",
+            ],
+          }),
+          text: `Thanks for reaching out
 
 Hello,
 
-Thank you for signing up for the Asine Property Management waitlist! We're excited to have ${property_name} join our community.
+We received your message about ${property_name}.
 
-We've received your interest and have added you to our waitlist. We'll keep you updated as we move forward.
+We'll follow up shortly. If you'd like to get started right away, you can also activate a plan on sycnmore.com.
 
 Best regards,
-The Asine Team`
-
-        formData.append('html', htmlBody)
-        formData.append('text', textBody)
-
-        const mailgunResponse = await fetch(mailgunUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': authHeader,
-          },
-          body: formData,
+The Asine Team`,
         })
 
-        if (mailgunResponse.ok) {
+        if (confirmationSent) {
+          console.log('Confirmation email sent to', email)
           try {
-            const mailgunResult = await mailgunResponse.json()
-            console.log('Confirmation email sent:', mailgunResult.id || mailgunResult.message || 'Success')
-            
-            // Update notified_at timestamp (don't fail if this fails)
-            try {
-              const { error: updateError } = await supabaseAdmin
-                .from('pm_waitlist')
-                .update({ notified_at: new Date().toISOString() })
-                .eq('id', waitlistEntry.id)
-              
-              if (updateError) {
-                console.error('Error updating notified_at:', updateError)
-              }
-            } catch (updateErr) {
-              console.error('Exception updating notified_at:', updateErr)
-              // Continue anyway - email was sent successfully
+            const { error: updateError } = await supabaseAdmin
+              .from('pm_waitlist')
+              .update({ notified_at: new Date().toISOString() })
+              .eq('id', waitlistEntry.id)
+
+            if (updateError) {
+              console.error('Error updating notified_at:', updateError)
             }
-          } catch (jsonError) {
-            // Mailgun returned OK but response wasn't valid JSON - log and continue
-            console.warn('Mailgun response OK but not JSON, email likely sent:', jsonError)
-            // Still try to update notified_at since email was sent
-            try {
-              await supabaseAdmin
-                .from('pm_waitlist')
-                .update({ notified_at: new Date().toISOString() })
-                .eq('id', waitlistEntry.id)
-            } catch (updateErr) {
-              console.error('Error updating notified_at after email:', updateErr)
-            }
+          } catch (updateErr) {
+            console.error('Exception updating notified_at:', updateErr)
           }
-        } else {
-          const errorText = await mailgunResponse.text().catch(() => 'Unknown error')
-          console.error('Failed to send confirmation email:', {
-            status: mailgunResponse.status,
-            error: errorText
-          })
-          // Don't fail the request if email fails
         }
       } catch (emailError) {
         console.error('Error sending confirmation email:', emailError)
-        // Don't fail the request if email fails
+      }
+
+      try {
+        const leadSent = await sendMailgunMessage({
+          mailgunUrl,
+          authHeader,
+          from: fromAddress,
+          to: leadInbox,
+          subject: `New landing page inquiry from ${property_name.trim()}`,
+          replyTo: email.toLowerCase(),
+          html: asineEmailHtml({
+            title: 'New landing page inquiry',
+            greeting: 'Hi JP,',
+            paragraphs: [
+              'Someone submitted the Contact us form on sycnmore.com.',
+            ],
+            extraHtml: `<div style="background:#f3f4f6;padding:16px;border-radius:8px;margin:8px 0 20px 0;">
+              <p style="margin:0 0 8px 0;"><strong>Email:</strong> ${safeEmail}</p>
+              <p style="margin:0;"><strong>Property / company:</strong> ${safePropertyName}</p>
+            </div>`,
+            signOff: 'Reply to this email to reach them directly.',
+          }),
+          text: `New landing page inquiry
+
+Hi JP,
+
+Someone submitted the Contact us form on sycnmore.com.
+
+Email: ${email.toLowerCase()}
+Property / company: ${property_name.trim()}
+
+Reply to this email to reach them directly.`,
+        })
+
+        if (leadSent) {
+          console.log('Lead notification sent to', leadInbox)
+        }
+      } catch (leadError) {
+        console.error('Error sending lead notification:', leadError)
       }
     } else {
-      console.warn('Mailgun not configured, skipping confirmation email')
+      console.warn('Mailgun not configured, skipping confirmation and lead emails')
     }
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Successfully added to waitlist',
+        message: 'Message received',
         id: waitlistEntry.id
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

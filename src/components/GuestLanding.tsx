@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent } from 'react'
 import {
   ArrowRight,
   CalendarCheck,
   Check,
   ClipboardList,
   Headphones,
-  Image as ImageIcon,
   Mail,
   MessageCircle,
   Play,
@@ -24,30 +23,31 @@ interface GuestLandingProps {
 
 const UNIT_RANGES = ['1 - 50 units', '51 - 200 units', '201 - 1,000 units', '1,000+ units']
 
+const VIMEO_VIDEO_ID = '1225117948'
+const VIMEO_TITLE = 'Asine - Manage less. Resolve more.'
+const VIMEO_POSTER =
+  'https://i.vimeocdn.com/video/2198754137-38aa9742a3330377483d99b35d6d5907b641698213b527b071c2e124cfc43a2e-d_1280x720?region=us'
+
 const highlights = [
   {
-    step: 1,
     title: 'Work Orders',
     body: 'Tenants submit maintenance requests directly with photo attachments.',
     icon: ClipboardList,
     terracotta: false,
   },
   {
-    step: 3,
     title: 'Direct Communication',
     body: 'Tenants and assigned technicians communicate in one direct chat channel.',
     icon: MessageCircle,
     terracotta: false,
   },
   {
-    step: 4,
     title: 'Reopen Work Orders',
     body: 'Recurring problem? Tenants can reopen existing requests without starting over.',
     icon: RefreshCw,
     terracotta: true,
   },
   {
-    step: 2,
     title: 'Simple Technician Workflow',
     body: 'Technicians manage assigned jobs, update status, and mark them complete instantly.',
     icon: CalendarCheck,
@@ -55,46 +55,17 @@ const highlights = [
   },
 ]
 
-const stepTiles = [
-  { step: 1, title: 'Tenant Request', caption: 'Submit issue' },
-  { step: 2, title: 'Tech Assigned', caption: 'PM assigns job' },
-  { step: 3, title: 'Direct Chat', caption: 'Tenant & Tech' },
-  { step: 4, title: 'Complete/Reopen', caption: 'Resolution' },
-]
-
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
-  const [step, setStep] = useState(1)
   const [email, setEmail] = useState('')
   const [propertyName, setPropertyName] = useState('')
   const [unitRange, setUnitRange] = useState(UNIT_RANGES[0])
   const [sending, setSending] = useState(false)
   const [contactSent, setContactSent] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
-  const playTimer = useRef<number | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (playTimer.current) window.clearInterval(playTimer.current)
-    }
-  }, [])
-
-  const simulateFlow = () => {
-    if (playTimer.current) window.clearInterval(playTimer.current)
-    let next = 1
-    setStep(1)
-    playTimer.current = window.setInterval(() => {
-      next += 1
-      setStep(next)
-      if (next >= 4 && playTimer.current) {
-        window.clearInterval(playTimer.current)
-        playTimer.current = null
-      }
-    }, 2500)
-  }
 
   const handleWaitlist = async (e: FormEvent) => {
     e.preventDefault()
@@ -133,8 +104,6 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
       setSending(false)
     }
   }
-
-  const active = workflowSteps[step - 1]
 
   return (
     <div className="bg-asine-map flex min-h-screen flex-col text-slate-800">
@@ -234,11 +203,11 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 Designed specifically to eliminate middleman overhead for property managers.
               </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {highlights.map(({ step: highlightStep, title, body, icon: Icon, terracotta }) => (
+                {highlights.map(({ title, body, icon: Icon, terracotta }) => (
                   <button
                     key={title}
                     type="button"
-                    onClick={() => setStep(highlightStep)}
+                    onClick={() => scrollToId('action')}
                     className={`group rounded-2xl border bg-white p-4 text-left text-slate-800 shadow-sm transition hover:shadow-md ${
                       terracotta
                         ? 'border-slate-100 hover:border-[#c25e38]'
@@ -265,54 +234,17 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             className="scroll-mt-24 flex flex-col justify-between rounded-3xl border border-[#2c6e59] bg-[#143d32] p-6 text-white shadow-xl sm:p-8"
           >
             <div>
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold tracking-tight sm:text-2xl">See Asine in Action</h2>
-                  <p className="text-xs text-emerald-200/80 sm:text-sm">
-                    Click any step to inspect the live interaction workflow.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={simulateFlow}
-                  className="flex items-center gap-1 rounded-lg border border-[#38826b]/40 bg-[#1b4d3e] px-3 py-1 text-xs font-semibold text-emerald-200 hover:bg-[#2c6e59]"
-                >
-                  <Play className="h-3.5 w-3.5 fill-current" />
-                  Simulate Flow
-                </button>
+              <div className="mb-4">
+                <h2 className="text-xl font-bold tracking-tight sm:text-2xl">See Asine in Action</h2>
+                <p className="mt-1 text-xs text-emerald-200/80 sm:text-sm">
+                  Watch how tenants, technicians, and property managers work together.
+                </p>
               </div>
-              <div className="mb-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                {stepTiles.map((tile) => {
-                  const activeTile = tile.step === step
-                  return (
-                    <button
-                      key={tile.step}
-                      type="button"
-                      onClick={() => setStep(tile.step)}
-                      className={`flex flex-col items-center rounded-xl p-3 text-center transition ${
-                        activeTile
-                          ? 'border-2 border-emerald-400 bg-[#1b4d3e] shadow-md'
-                          : 'border border-[#2c6e59] bg-[#1b4d3e]/60 hover:bg-[#1b4d3e]'
-                      }`}
-                    >
-                      <span
-                        className={`mb-1 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
-                          activeTile ? 'bg-emerald-400 text-[#0d2b23]' : 'bg-[#2c6e59] text-white'
-                        }`}
-                      >
-                        {tile.step}
-                      </span>
-                      <span className="text-[11px] font-bold leading-tight">{tile.title}</span>
-                      <span className="text-[9px] text-emerald-300">{tile.caption}</span>
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="flex min-h-[220px] flex-col justify-between rounded-2xl border border-[#38826b]/30 bg-white p-4 text-slate-800 shadow-inner sm:p-5">
-                {active.content}
-              </div>
+              <PromoVideo />
             </div>
-            <p className="mt-4 text-center text-xs font-medium text-emerald-200">{active.caption}</p>
+            <p className="mt-4 text-center text-xs font-medium text-emerald-200">
+              {VIMEO_TITLE}
+            </p>
           </section>
         </div>
 
@@ -453,104 +385,42 @@ function HeroAction({
   )
 }
 
-const workflowSteps: { caption: string; content: ReactNode }[] = [
-  {
-    caption: 'Step 1 of 4: Tenant submits work order directly.',
-    content: (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between border-b pb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            New Work Order
+function PromoVideo() {
+  const [playing, setPlaying] = useState(false)
+
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-2xl border border-[#38826b]/30 bg-[#0d2b23] shadow-inner">
+      {playing ? (
+        <iframe
+          src={`https://player.vimeo.com/video/${VIMEO_VIDEO_ID}?badge=0&autopause=0&autoplay=1&dnt=1`}
+          title={VIMEO_TITLE}
+          allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          className="absolute inset-0 h-full w-full border-0"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPlaying(true)}
+          className="group absolute inset-0"
+          aria-label={`Play ${VIMEO_TITLE}`}
+        >
+          <img
+            src={VIMEO_POSTER}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <span className="absolute inset-0 bg-[#0d2b23]/30 transition group-hover:bg-[#0d2b23]/15" />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#52b788] text-[#0d2b23] shadow-lg transition group-hover:scale-110">
+              <Play className="ml-0.5 h-7 w-7 fill-current" />
+            </span>
           </span>
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-            Pending
-          </span>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-          <div className="text-xs font-bold text-slate-900">Leaking faucet — Unit 12B</div>
-          <div className="text-[11px] text-slate-500">
-            Submitted by Sarah Jenkins · Kitchen sink leaking water onto floor.
-          </div>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] text-slate-600">
-          <ImageIcon className="h-3 w-3 text-[#2c6e59]" />1 Photo Attached
-        </span>
-      </div>
-    ),
-  },
-  {
-    caption: 'Step 2 of 4: Property manager assigns a technician.',
-    content: (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between border-b pb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            Technician Assigned
-          </span>
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
-            Assigned
-          </span>
-        </div>
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1b4d3e] text-xs font-bold text-white">
-            JT
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-900">John Technician</div>
-            <div className="text-[10px] font-medium text-[#1b4d3e]">Plumbing · ETA 2:15 PM</div>
-          </div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    caption: 'Step 3 of 4: Tenant and technician communicate in-app.',
-    content: (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between border-b pb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-            Direct Communication
-          </span>
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-            Live Chat
-          </span>
-        </div>
-        <div className="max-w-[85%] rounded-lg bg-slate-100 p-2 text-[11px] text-slate-800">
-          <span className="block text-[9px] font-semibold text-slate-500">John Tech</span>
-          Hi Sarah, I see your photo of the leak. On my way with replacement washers!
-        </div>
-        <div className="ml-auto max-w-[85%] rounded-lg bg-[#1b4d3e] p-2 text-[11px] text-white">
-          <span className="block text-[9px] font-semibold text-emerald-200">Sarah (Tenant)</span>
-          Great, thanks! Gate code is #4921.
-        </div>
-      </div>
-    ),
-  },
-  {
-    caption: 'Step 4 of 4: Completed, or reopened if the issue comes back.',
-    content: (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between border-b pb-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Job Status</span>
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-            Completed
-          </span>
-        </div>
-        <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-          <div className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-emerald-600" />
-            <span className="text-xs font-bold text-slate-900">Work Order Resolved</span>
-          </div>
-          <span className="text-[10px] text-slate-500">2:45 PM</span>
-        </div>
-        <div className="flex justify-end pt-1">
-          <span className="inline-flex items-center gap-1 rounded-lg bg-[#c25e38] px-3 py-1.5 text-xs font-bold text-white">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Reopen Issue
-          </span>
-        </div>
-      </div>
-    ),
-  },
-]
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default GuestLanding

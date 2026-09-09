@@ -70,7 +70,7 @@ const Waitlist = () => {
       setEntries(data || []);
     } catch (err) {
       console.error('Error fetching waitlist:', err);
-      setError(toUserFacingError(err, 'Unable to load waitlist. Please try again.'));
+      setError(toUserFacingError(err, 'Unable to load inquiries. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -157,8 +157,8 @@ const Waitlist = () => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">PM Waitlist</h1>
-          <p className="text-gray-600 mt-1">Manage Property Manager waitlist signups</p>
+          <h1 className="text-3xl font-bold text-gray-900">Inquiries</h1>
+          <p className="text-gray-600 mt-1">Messages from the Contact us form</p>
         </div>
         <button
           onClick={() => setShowBulkEmail(!showBulkEmail)}
@@ -335,7 +335,7 @@ const Waitlist = () => {
         </div>
       ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          No waitlist entries found
+          No inquiries found
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
