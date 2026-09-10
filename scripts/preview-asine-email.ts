@@ -23,7 +23,7 @@ const envStore: Record<string, string> = { ...process.env } as Record<string, st
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-envStore.EMAIL_LOGO_URL = './public/Logo-Final.png'
+envStore.EMAIL_LOGO_URL = './public/asine-wordmark.png'
 
 const { asineEmailHtml } = await import('../supabase/functions/_shared/asineEmailLayout.ts')
 
