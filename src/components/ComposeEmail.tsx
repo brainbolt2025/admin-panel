@@ -8,6 +8,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const ComposeEmail = () => {
   const [to, setTo] = useState('')
+  const [personName, setPersonName] = useState('')
+  const [propertyName, setPropertyName] = useState('')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -42,6 +44,8 @@ const ComposeEmail = () => {
         },
         body: JSON.stringify({
           to: to.trim(),
+          personName: personName.trim(),
+          propertyName: propertyName.trim(),
           subject: subject.trim(),
           message: message.trim(),
         }),
@@ -59,6 +63,8 @@ const ComposeEmail = () => {
 
       setSuccess(result.message || `Email sent to ${to.trim()}`)
       setTo('')
+      setPersonName('')
+      setPropertyName('')
       setSubject('')
       setMessage('')
     } catch (err) {
@@ -94,6 +100,36 @@ const ComposeEmail = () => {
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="recipient@example.com"
+            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-teal-500"
+            disabled={sending}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="compose-person" className="mb-2 block text-sm font-medium text-gray-700">
+            Person name
+          </label>
+          <input
+            id="compose-person"
+            type="text"
+            value={personName}
+            onChange={(e) => setPersonName(e.target.value)}
+            placeholder="Shelley Alterman"
+            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-teal-500"
+            disabled={sending}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="compose-property" className="mb-2 block text-sm font-medium text-gray-700">
+            Property name
+          </label>
+          <input
+            id="compose-property"
+            type="text"
+            value={propertyName}
+            onChange={(e) => setPropertyName(e.target.value)}
+            placeholder="Rental Guys Property Management"
             className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-teal-500"
             disabled={sending}
           />
