@@ -15,6 +15,52 @@ interface SingleEmailRequest {
   to: string
   subject: string
   message: string
+  propertyName?: string
+  personName?: string
+}
+
+function propertyToken(): RegExp {
+  return /\{\{\s*property(?:_?name)?\s*\}\}/gi
+}
+
+function nameToken(): RegExp {
+  return /\{\{\s*name\s*\}\}/gi
+}
+
+function firstNameToken(): RegExp {
+  return /\{\{\s*first_?name\s*\}\}/gi
+}
+
+function usesToken(token: () => RegExp, ...texts: string[]): boolean {
+  return texts.some((text) => token().test(text))
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function applyTokens(text: string, propertyName: string, personName: string): string {
+  const firstName = personName.split(/\s+/)[0] ?? ''
+  return text
+    .replace(propertyToken(), propertyName)
+    .replace(firstNameToken(), firstName)
+    .replace(nameToken(), personName)
+}
+
+function messageToHtml(message: string): string {
+  return message
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const inner = escapeHtml(block).replace(/\n/g, '<br/>')
+      return `<p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">${inner}</p>`
+    })
+    .join('')
 }
 
 serve(async (req) => {
@@ -83,8 +129,10 @@ serve(async (req) => {
     }
 
     const to = body.to?.trim() ?? ''
-    const subject = body.subject?.trim() ?? ''
-    const message = body.message?.trim() ?? ''
+    const propertyName = body.propertyName?.trim() ?? ''
+    const personName = body.personName?.trim() ?? ''
+    let subject = body.subject?.trim() ?? ''
+    let message = body.message?.trim() ?? ''
 
     if (!to || !EMAIL_RE.test(to)) {
       return new Response(
@@ -107,6 +155,23 @@ serve(async (req) => {
       )
     }
 
+    if (usesToken(propertyToken, subject, message) && !propertyName) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Property name is required when the message uses {{property}}' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if ((usesToken(nameToken, subject, message) || usesToken(firstNameToken, subject, message)) && !personName) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Person name is required when the message uses {{name}} or {{first_name}}' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    subject = applyTokens(subject, propertyName, personName)
+    message = applyTokens(message, propertyName, personName)
+
     const MAILGUN_DOMAIN = Deno.env.get('MAILGUN_DOMAIN') || ''
     const MAILGUN_API_KEY = Deno.env.get('MAILGUN_API_KEY') || ''
     const MAILGUN_REGION = Deno.env.get('MAILGUN_REGION') || 'us'
@@ -124,10 +189,7 @@ serve(async (req) => {
     const fromAddress = `JP from Asine <jp@${MAILGUN_DOMAIN}>`
     const replyTo = `jp@${MAILGUN_DOMAIN}`
 
-    const htmlMessage = message
-      .split('\n')
-      .map((line) => `<p>${line || '&nbsp;'}</p>`)
-      .join('')
+    const htmlMessage = messageToHtml(message)
 
     const formData = new FormData()
     formData.append('from', fromAddress)

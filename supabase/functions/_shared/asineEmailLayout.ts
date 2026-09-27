@@ -161,8 +161,8 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
                   </td>
                 </tr>
               </table>
-              <p style="margin:16px 0 0 0;color:${TAGLINE_TEAL};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;">
-                Property Maintenance Ecosystem
+              <p style="margin:16px 0 0 0;color:${TAGLINE_TEAL};font-size:12px;font-weight:600;letter-spacing:0.5px;">
+                Manage less. Resolve more.
               </p>
               <!--[if gte mso 9]>
                 </v:textbox>
@@ -174,9 +174,11 @@ export function asineEmailHtml(opts: AsineEmailOptions): string {
           <!-- BODY -->
           <tr>
             <td style="padding:36px 32px 28px 32px;background-color:#ffffff;">
-              <h1 style="margin:0 0 16px 0;color:${HEADING};font-size:24px;font-weight:800;line-height:1.25;">
+              ${opts.title
+                ? `<h1 style="margin:0 0 16px 0;color:${HEADING};font-size:24px;font-weight:800;line-height:1.25;">
                 ${opts.title}
-              </h1>
+              </h1>`
+                : ''}
               ${greeting}
               ${paragraphs}
               ${opts.extraHtml || ''}
