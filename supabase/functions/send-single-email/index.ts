@@ -201,6 +201,7 @@ serve(async (req) => {
       asineEmailHtml({
         title: subject,
         extraHtml: htmlMessage,
+        signOff: 'JP<br/><strong style="color:#0d2b23;">Founder, Asine</strong>',
       }),
     )
     formData.append('text', message)
