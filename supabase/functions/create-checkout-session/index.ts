@@ -71,13 +71,13 @@ serve(async (req) => {
     const monthlyPriceId =
       Deno.env.get('STRIPE_MONTHLY_PRICE_ID') ??
       (isTestMode
-        ? 'price_1SMzASLC1RJAUbjMZVUqQCY0'
-        : 'price_1SMce8LC1RJAUbjMf3MZyCav')
+        ? 'price_1UQz6TLC1RJAUbjMJWYpYN5C'
+        : 'price_1UQzFTLC1RJAUbjMg3xUKn3J')
     const yearlyPriceId =
       Deno.env.get('STRIPE_YEARLY_PRICE_ID') ??
       (isTestMode
-        ? 'price_1SMzB3LC1RJAUbjMB57Ph1dI'
-        : 'price_1SMcgxLC1RJAUbjMCsGkOzCK')
+        ? 'price_1UQz5zLC1RJAUbjM9IkUOW2g'
+        : 'price_1UQzH7LC1RJAUbjMQSGFhTPf')
     const priceId = plan === 'monthly' ? monthlyPriceId : yearlyPriceId
     console.log('Using price ID:', priceId)
 
