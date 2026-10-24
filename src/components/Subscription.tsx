@@ -48,7 +48,7 @@ const Subscription = ({
     {
       id: 'monthly',
       name: 'Monthly Plan',
-      price: '$149',
+      price: '$199.99',
       period: '/month',
       features: [
         'Approve or reject pending signups',
@@ -65,9 +65,9 @@ const Subscription = ({
     {
       id: 'yearly',
       name: 'Yearly Plan',
-      price: '$1,429',
+      price: '$1,919.99',
       period: '/year',
-      originalPrice: '$1,788',
+      originalPrice: '$2,399.88',
       discount: '20% OFF',
       features: [
         'Approve or reject pending signups',
@@ -78,7 +78,7 @@ const Subscription = ({
         'Add or remove technicians',
         'Assign work orders to specific technicians',
         'View work order statistics',
-        'Save $359 per year'
+        'Save $479.89 per year'
       ],
       popular: true
     }

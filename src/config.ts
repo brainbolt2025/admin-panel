@@ -19,9 +19,9 @@ export const config = {
       import.meta.env.VITE_STRIPE_PUBLIC_KEY ||
       'pk_test_51SMW5PLC1RJAUbjMm3YeYK0X7UDOApodSWG603SAE7hUgHjdmPsIYRIgdaATq0EpRbcq4tiDzobtcyydFsEbGC7y00oz597a74',
     monthlyPriceId:
-      import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID || 'price_1SMzASLC1RJAUbjMZVUqQCY0',
+      import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID || 'price_1UQzFTLC1RJAUbjMg3xUKn3J',
     yearlyPriceId:
-      import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID || 'price_1SMzB3LC1RJAUbjMB57Ph1dI',
+      import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID || 'price_1UQzH7LC1RJAUbjMQSGFhTPf',
   },
 
   api: {
