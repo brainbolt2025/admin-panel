@@ -25,6 +25,52 @@
       name="twitter:description"
       content="Flat $199.99/month or $1,919.99/year. Unlimited units, tenants, and technicians. No per-unit fees."
     />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.sycnmore.com/#organization",
+            "name": "Syc&More LLC",
+            "alternateName": "Asine",
+            "url": "https://www.sycnmore.com/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://www.sycnmore.com/asine-logo.png"
+            },
+            "sameAs": ["https://www.linkedin.com/in/juan-r-53b470145"]
+          },
+          {
+            "@type": "Product",
+            "@id": "https://www.sycnmore.com/#product",
+            "name": "Asine",
+            "description": "Property maintenance work orders for residential property managers: photos, tenant–technician chat, and reopenable requests. Flat pricing with unlimited units.",
+            "brand": { "@id": "https://www.sycnmore.com/#organization" },
+            "url": "https://www.sycnmore.com/",
+            "image": "https://www.sycnmore.com/asine-wordmark.png",
+            "offers": [
+              {
+                "@type": "Offer",
+                "name": "Monthly",
+                "price": "199.99",
+                "priceCurrency": "USD",
+                "availability": "https://schema.org/InStock",
+                "url": "https://www.sycnmore.com/pricing"
+              },
+              {
+                "@type": "Offer",
+                "name": "Yearly",
+                "price": "1919.99",
+                "priceCurrency": "USD",
+                "availability": "https://schema.org/InStock",
+                "url": "https://www.sycnmore.com/pricing"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
