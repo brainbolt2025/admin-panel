@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   Check,
   ClipboardList,
+  Linkedin,
   Lock,
   Mail,
   Menu,
@@ -41,6 +42,14 @@ const PATH_SECTIONS: Record<string, string> = {
   '/pricing': 'pricing',
   '/features': 'highlights',
   '/contact': 'contact',
+  '/about': 'about',
+}
+
+const FOUNDER = {
+  name: 'Juan Romero',
+  role: 'Founder, Asine',
+  linkedIn: 'https://www.linkedin.com/in/juan-r-53b470145',
+  bio: 'I built Asine because property managers should not be the middleman on every repair. When a maintenance issue comes back, the tenant, photos, and technician should pick up on the same work order.',
 }
 
 const highlights = [
@@ -150,6 +159,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             <button type="button" onClick={() => scrollToId('pricing')} className="hover:text-white">
               Pricing
             </button>
+            <button type="button" onClick={() => scrollToId('about')} className="hover:text-white">
+              About
+            </button>
             <button type="button" onClick={() => scrollToId('contact')} className="hover:text-white">
               Contact
             </button>
@@ -204,6 +216,13 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 Pricing
+              </button>
+              <button
+                type="button"
+                onClick={() => goToSection('about')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                About
               </button>
               <button
                 type="button"
@@ -384,6 +403,38 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         </section>
 
         <section
+          id="about"
+          className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
+        >
+          <div className="mx-auto flex max-w-3xl flex-col items-start gap-6 sm:flex-row sm:items-center">
+            <div
+              className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#1b4d3e] text-2xl font-bold text-white"
+              aria-hidden
+            >
+              JR
+            </div>
+            <div className="space-y-3">
+              <div>
+                <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+                  {FOUNDER.name}
+                </h2>
+                <p className="text-sm font-medium text-[#2c6e59]">{FOUNDER.role}</p>
+              </div>
+              <p className="text-sm leading-relaxed text-slate-600">{FOUNDER.bio}</p>
+              <a
+                href={FOUNDER.linkedIn}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[#1b4d3e] underline-offset-4 hover:underline"
+              >
+                <Linkedin className="h-4 w-4" />
+                LinkedIn
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section
           id="contact"
           className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
         >
@@ -489,13 +540,24 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
               Florida · © {new Date().getFullYear()} Syc&amp;More LLC. All rights reserved.
             </span>
           </p>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-6">
+            <button type="button" onClick={() => scrollToId('about')} className="underline hover:text-white">
+              About
+            </button>
             <a href="/privacy" className="underline hover:text-white">
               Privacy policy
             </a>
             <button type="button" onClick={() => scrollToId('contact')} className="underline hover:text-white">
               Support
             </button>
+            <a
+              href={FOUNDER.linkedIn}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-white"
+            >
+              LinkedIn
+            </a>
           </div>
         </div>
       </footer>
