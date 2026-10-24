@@ -10,6 +10,9 @@
   "rewrites": [
     { "source": "/privacy", "destination": "/privacy-policy.html" },
     { "source": "/privacy-policy", "destination": "/privacy-policy.html" },
+    { "source": "/pricing", "destination": "/pricing.html" },
+    { "source": "/about", "destination": "/about.html" },
+    { "source": "/features", "destination": "/features.html" },
     { "source": "/((?!\\.well-known/).*)", "destination": "/index.html" }
   ]
 }

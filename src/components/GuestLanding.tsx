@@ -172,23 +172,23 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
       <header className="sticky top-0 z-40 border-b border-[#2c6e59]/40 bg-[#143d32] text-white shadow-lg">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="rounded-xl bg-white px-2 py-1">
+            <a href="/" className="rounded-xl bg-white px-2 py-1" aria-label="Asine home">
               <AsineLogo size="sm" src={logoFinal} blendOnWhite className="[&_img]:!h-8" />
-            </div>
+            </a>
           </div>
           <nav className="hidden items-center gap-8 text-sm font-medium text-emerald-100/90 md:flex">
-            <button type="button" onClick={() => scrollToId('highlights')} className="hover:text-white">
+            <a href="/features" className="hover:text-white">
               Platform Highlights
-            </button>
+            </a>
             <button type="button" onClick={() => scrollToId('action')} className="hover:text-white">
               How It Works
             </button>
-            <button type="button" onClick={() => scrollToId('pricing')} className="hover:text-white">
+            <a href="/pricing" className="hover:text-white">
               Pricing
-            </button>
-            <button type="button" onClick={() => scrollToId('about')} className="hover:text-white">
+            </a>
+            <a href="/about" className="hover:text-white">
               About
-            </button>
+            </a>
             <button type="button" onClick={() => scrollToId('faq')} className="hover:text-white">
               FAQ
             </button>
@@ -226,13 +226,12 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         {mobileNavOpen && (
           <nav className="border-t border-[#2c6e59]/40 px-4 py-3 md:hidden">
             <div className="mx-auto flex max-w-7xl flex-col gap-1">
-              <button
-                type="button"
-                onClick={() => goToSection('highlights')}
+              <a
+                href="/features"
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 Platform Highlights
-              </button>
+              </a>
               <button
                 type="button"
                 onClick={() => goToSection('action')}
@@ -240,20 +239,18 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
               >
                 How It Works
               </button>
-              <button
-                type="button"
-                onClick={() => goToSection('pricing')}
+              <a
+                href="/pricing"
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 Pricing
-              </button>
-              <button
-                type="button"
-                onClick={() => goToSection('about')}
+              </a>
+              <a
+                href="/about"
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 About
-              </button>
+              </a>
               <button
                 type="button"
                 onClick={() => goToSection('faq')}
@@ -615,9 +612,15 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             </span>
           </p>
           <div className="flex flex-wrap items-center justify-center gap-6">
-            <button type="button" onClick={() => scrollToId('about')} className="underline hover:text-white">
+            <a href="/about" className="underline hover:text-white">
               About
-            </button>
+            </a>
+            <a href="/pricing" className="underline hover:text-white">
+              Pricing
+            </a>
+            <a href="/features" className="underline hover:text-white">
+              Features
+            </a>
             <button type="button" onClick={() => scrollToId('faq')} className="underline hover:text-white">
               FAQ
             </button>
