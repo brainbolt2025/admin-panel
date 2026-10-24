@@ -13,6 +13,8 @@
     { "source": "/pricing", "destination": "/pricing.html" },
     { "source": "/about", "destination": "/about.html" },
     { "source": "/features", "destination": "/features.html" },
+    { "source": "/vs/asine-vs-property-meld", "destination": "/vs/asine-vs-property-meld.html" },
+    { "source": "/vs/asine-vs-buildium", "destination": "/vs/asine-vs-buildium.html" },
     { "source": "/((?!\\.well-known/).*)", "destination": "/index.html" }
   ]
 }

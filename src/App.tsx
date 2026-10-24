@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Login from './components/Login'
 import GuestLanding from './components/GuestLanding'
+import ComparisonPage from './components/ComparisonPage'
+import { comparisonSlugFromPath } from './lib/comparisonPages'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './components/Dashboard'
@@ -1033,21 +1035,31 @@ const pendingWorkOrdersContextValue = useMemo(
   // Show login screen if not logged in
   if (!isLoggedIn) {
     if (!showLogin) {
+      const comparisonSlug = comparisonSlugFromPath(window.location.pathname)
+      const openSubscriptionFromMarketing = () => {
+        setSubscriptionPrefill({
+          name: '',
+          email: '',
+          propertyName: '',
+        })
+        setSubscriptionBackLabel('Back to home')
+        setShowSubscription(true)
+      }
       return (
         <>
           {emailVerificationBanner}
-          <GuestLanding
-            onGetStarted={() => {
-              setSubscriptionPrefill({
-                name: '',
-                email: '',
-                propertyName: '',
-              })
-              setSubscriptionBackLabel('Back to home')
-              setShowSubscription(true)
-            }}
-            onSignIn={() => setShowLogin(true)}
-          />
+          {comparisonSlug ? (
+            <ComparisonPage
+              slug={comparisonSlug}
+              onGetStarted={openSubscriptionFromMarketing}
+              onSignIn={() => setShowLogin(true)}
+            />
+          ) : (
+            <GuestLanding
+              onGetStarted={openSubscriptionFromMarketing}
+              onSignIn={() => setShowLogin(true)}
+            />
+          )}
         </>
       )
     }
