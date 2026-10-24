@@ -48,6 +48,45 @@ const PATH_SECTIONS: Record<string, string> = {
   '/faq': 'faq',
 }
 
+const PATH_HERO: Record<string, { title: string; titleBreak?: string; lede: string }> = {
+  '/': {
+    title: 'When a Repair Comes Back,',
+    titleBreak: 'Pick Up Where You Left Off',
+    lede:
+      'Stop being the middleman between group texts, calls, and emails. Asine keeps the tenant, photos, and technician chat on one work order. If the problem returns, the tenant reopens that same request instead of starting over.',
+  },
+  '/pricing': {
+    title: 'Asine pricing: one flat fee,',
+    titleBreak: 'unlimited units',
+    lede:
+      'Flat $199.99/month or $1,919.99/year. No per-unit fees. Built for residential portfolios from 20 units up, with unlimited tenants and technicians on every plan.',
+  },
+  '/features': {
+    title: 'Work orders, reopen, and chat —',
+    titleBreak: 'built for residential PMs',
+    lede:
+      'Tenants submit repairs with photos, talk to technicians in one thread, and reopen the same work order when a problem comes back — so you are not the middleman.',
+  },
+  '/about': {
+    title: 'About Asine —',
+    titleBreak: 'built by Juan Romero',
+    lede:
+      'Asine is a product of Syc&More LLC for residential property managers who want tenants, photos, and technician chat on one work order — without becoming the middleman on every repair.',
+  },
+  '/faq': {
+    title: 'Asine FAQ —',
+    titleBreak: 'integrations, apps, data, and trial',
+    lede:
+      'Straight answers about PMS integrations, how tenants and technicians use Asine, how data is handled, and how the 30-day trial code works.',
+  },
+  '/contact': {
+    title: 'Contact Asine —',
+    titleBreak: 'ask for a free trial code',
+    lede:
+      'Tell us about your portfolio and we will send a unique code for a 30-day free trial. Pay nothing for the first 30 days if you cancel before then.',
+  },
+}
+
 const FOUNDER = {
   name: 'Juan Romero',
   role: 'Founder, Asine',
@@ -120,10 +159,13 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
   const [contactError, setContactError] = useState<string | null>(null)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
+  const pagePath = window.location.pathname.replace(/\/$/, '') || '/'
+  const hero = PATH_HERO[pagePath] ?? PATH_HERO['/']
+
   useEffect(() => {
-    const section = PATH_SECTIONS[window.location.pathname.replace(/\/$/, '')]
+    const section = PATH_SECTIONS[pagePath]
     if (section) scrollToId(section)
-  }, [])
+  }, [pagePath])
 
   const goToSection = (id: string) => {
     setMobileNavOpen(false)
@@ -308,12 +350,17 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             For residential property managers
           </div>
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-            When a Repair Comes Back, <br className="hidden sm:inline" /> Pick Up Where You Left Off
+            {hero.title}
+            {hero.titleBreak ? (
+              <>
+                {' '}
+                <br className="hidden sm:inline" />
+                {hero.titleBreak}
+              </>
+            ) : null}
           </h1>
           <p className="mx-auto max-w-3xl text-base font-normal leading-relaxed text-emerald-100/90 sm:text-lg">
-            Stop being the middleman between group texts, calls, and emails. Asine keeps the tenant,
-            photos, and technician chat on one work order. If the problem returns, the tenant
-            reopens that same request instead of starting over.
+            {hero.lede}
           </p>
           <div className="pt-6">
             <div className="mx-auto flex max-w-xl flex-col items-center gap-4 rounded-2xl border border-[#38826b]/40 bg-[#143d32]/90 p-5 shadow-2xl backdrop-blur-md sm:p-6">

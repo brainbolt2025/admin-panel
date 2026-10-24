@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 vite",
-    "build": "cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tsc -b && cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 vite build",
+    "sitemap": "node scripts/generate-sitemap.mjs",
+    "indexnow": "node scripts/ping-indexnow.mjs",
+    "build": "node scripts/generate-sitemap.mjs && cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 tsc -b && cross-env BROWSERSLIST_IGNORE_OLD_DATA=1 vite build && node scripts/ping-indexnow.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "email:preview": "tsx scripts/preview-asine-email.ts",
