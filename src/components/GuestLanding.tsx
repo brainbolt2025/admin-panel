@@ -212,7 +212,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 />
               </div>
               <p className="mt-4 text-center text-xs text-emerald-200/90 sm:text-sm">
-                Flat $199.99/month · Unlimited units ·{' '}
+                Flat $199.99/month · Unlimited units.{' '}
                 <button
                   type="button"
                   onClick={() => scrollToId('contact')}
@@ -220,6 +220,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 >
                   Ask us for a 30-day free trial code
                 </button>
+                . Pay nothing for the first 30 days. Cancel before then and you are never charged.
               </p>
             </div>
           </div>
@@ -307,7 +308,8 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             />
           </div>
           <p className="mt-8 text-center text-xs text-emerald-100/80 sm:text-sm">
-            Have a trial code from us? Enter it at checkout.{' '}
+            Have a trial code from us? Enter it at checkout. Pay nothing for the first 30 days.
+            Cancel before then and you are never charged.{' '}
             <button
               type="button"
               onClick={() => scrollToId('contact')}
@@ -336,8 +338,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
               </h2>
               <p className="text-sm leading-relaxed text-slate-600">
                 Want to try Asine first? Tell us about your portfolio and we will send you a code
-                for a 30-day free trial. Ready to go live right now? Get started and activate a
-                plan instead.
+                for a 30-day free trial. Pay nothing for the first 30 days. Cancel before then and
+                you are never charged. Ready to go live right now? Get started and activate a plan
+                instead.
               </p>
               <button
                 type="button"
@@ -422,8 +425,10 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
       <footer className="border-t border-[#143d32] bg-[#0d2b23] px-4 py-8 text-center text-xs text-emerald-100/70">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
           <p>
-            <span className="font-bold text-white">Asine</span>
-            <span className="ml-2">© {new Date().getFullYear()} Asine. All rights reserved.</span>
+            <span className="font-bold text-white">Asine LLC</span>
+            <span className="ml-2">
+              Florida · © {new Date().getFullYear()} Asine LLC. All rights reserved.
+            </span>
           </p>
           <div className="flex items-center gap-6">
             <a href="/privacy" className="underline hover:text-white">
