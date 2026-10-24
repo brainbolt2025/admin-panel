@@ -4,14 +4,13 @@ import {
   CalendarCheck,
   Check,
   ClipboardList,
-  Headphones,
   Lock,
   Mail,
+  Menu,
   MessageCircle,
   Play,
   RefreshCw,
-  Settings2,
-  Workflow,
+  X,
 } from 'lucide-react'
 import AsineLogo from './AsineLogo'
 import logoFinal from '../assets/Logo-Final.png'
@@ -82,11 +81,17 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
   const [sending, setSending] = useState(false)
   const [contactSent, setContactSent] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     const section = PATH_SECTIONS[window.location.pathname.replace(/\/$/, '')]
     if (section) scrollToId(section)
   }, [])
+
+  const goToSection = (id: string) => {
+    setMobileNavOpen(false)
+    scrollToId(id)
+  }
 
   const handleWaitlist = async (e: FormEvent) => {
     e.preventDefault()
@@ -149,24 +154,77 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
               Contact
             </button>
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onSignIn}
-              className="rounded-full border border-[#38826b]/50 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:border-[#52b788] hover:text-white sm:text-sm"
+              className="hidden min-h-11 rounded-full border border-[#38826b]/50 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:border-[#52b788] hover:text-white sm:inline-flex sm:items-center sm:text-sm"
             >
               Sign in
             </button>
             <button
               type="button"
               onClick={onGetStarted}
-              className="flex items-center gap-1.5 rounded-full bg-[#52b788] px-4 py-2 text-xs font-semibold text-[#0d2b23] shadow-md transition hover:bg-[#74c69d] sm:text-sm"
+              className="flex min-h-11 items-center gap-1.5 rounded-full bg-[#52b788] px-4 py-2 text-xs font-semibold text-[#0d2b23] shadow-md transition hover:bg-[#74c69d] sm:text-sm"
             >
               Get Started
               <ArrowRight className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-[#38826b]/50 text-emerald-100 transition hover:border-[#52b788] hover:text-white md:hidden"
+              aria-expanded={mobileNavOpen}
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+        {mobileNavOpen && (
+          <nav className="border-t border-[#2c6e59]/40 px-4 py-3 md:hidden">
+            <div className="mx-auto flex max-w-7xl flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => goToSection('highlights')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                Platform Highlights
+              </button>
+              <button
+                type="button"
+                onClick={() => goToSection('action')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                How It Works
+              </button>
+              <button
+                type="button"
+                onClick={() => goToSection('pricing')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                Pricing
+              </button>
+              <button
+                type="button"
+                onClick={() => goToSection('contact')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                Contact
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false)
+                  onSignIn()
+                }}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white sm:hidden"
+              >
+                Sign in
+              </button>
+            </div>
+          </nav>
+        )}
       </header>
 
       <section className="bg-asine-hero-map relative overflow-hidden border-b border-[#2c6e59]/40 px-4 pb-16 pt-12 text-white sm:px-6 lg:px-8">
@@ -178,40 +236,34 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         <div className="relative z-10 mx-auto max-w-5xl space-y-6 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#52b788]/30 bg-[#1b4d3e]/80 px-3.5 py-1.5 text-xs font-medium tracking-wide text-emerald-200">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            Property maintenance, in one work order
+            For residential property managers
           </div>
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
             When a Repair Comes Back, <br className="hidden sm:inline" /> Pick Up Where You Left Off
           </h1>
           <p className="mx-auto max-w-3xl text-base font-normal leading-relaxed text-emerald-100/90 sm:text-lg">
-            Asine keeps the tenant, photos, and technician chat on one work order. If the problem
-            returns, the tenant reopens that same request instead of starting over, and you stop
-            relaying messages between everyone.
+            Stop being the middleman between group texts, calls, and emails. Asine keeps the tenant,
+            photos, and technician chat on one work order. If the problem returns, the tenant
+            reopens that same request instead of starting over.
           </p>
           <div className="pt-6">
-            <div className="mx-auto max-w-4xl rounded-2xl border border-[#38826b]/40 bg-[#143d32]/90 p-4 shadow-2xl backdrop-blur-md sm:p-5">
-              <p className="mb-4 text-center text-xs font-bold uppercase tracking-widest text-emerald-300">
-                Get Started with Asine
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <HeroAction icon={ArrowRight} label="Get Started" onClick={onGetStarted} />
-                <HeroAction
-                  icon={Workflow}
-                  label="See How It Works"
-                  onClick={() => scrollToId('action')}
-                />
-                <HeroAction
-                  icon={Settings2}
-                  label="Explore Features"
-                  onClick={() => scrollToId('highlights')}
-                />
-                <HeroAction
-                  icon={Headphones}
-                  label="Contact Us"
-                  onClick={() => scrollToId('contact')}
-                />
-              </div>
-              <p className="mt-4 text-center text-xs text-emerald-200/90 sm:text-sm">
+            <div className="mx-auto flex max-w-xl flex-col items-center gap-4 rounded-2xl border border-[#38826b]/40 bg-[#143d32]/90 p-5 shadow-2xl backdrop-blur-md sm:p-6">
+              <button
+                type="button"
+                onClick={onGetStarted}
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#52b788] px-6 py-3 text-sm font-bold text-[#0d2b23] shadow-md transition hover:bg-[#74c69d] sm:text-base"
+              >
+                Get Started
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToId('action')}
+                className="text-sm font-semibold text-emerald-200 underline-offset-4 transition hover:text-white hover:underline"
+              >
+                Watch the 2-minute demo
+              </button>
+              <p className="text-center text-xs text-emerald-200/90 sm:text-sm">
                 Flat $199.99/month · Unlimited units.{' '}
                 <button
                   type="button"
@@ -297,12 +349,19 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             </p>
           </div>
           <div className="mx-auto mt-8 grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
-            <PriceCard name="Monthly" price="$199.99" period="/month" onGetStarted={onGetStarted} />
+            <PriceCard
+              name="Monthly"
+              price="$199.99"
+              period="/month"
+              valueAnchor="At $2.00/unit, 100 units would cost $200/month elsewhere. Here it is $199.99 total, however much you grow."
+              onGetStarted={onGetStarted}
+            />
             <PriceCard
               name="Yearly"
               price="$1,919.99"
               period="/year"
               note="Save 20% · $479.89 less than paying monthly"
+              badge="Recommended"
               highlighted
               onGetStarted={onGetStarted}
             />
@@ -449,6 +508,8 @@ function PriceCard({
   price,
   period,
   note,
+  valueAnchor,
+  badge,
   highlighted = false,
   onGetStarted,
 }: {
@@ -456,21 +517,29 @@ function PriceCard({
   price: string
   period: string
   note?: string
+  valueAnchor?: string
+  badge?: string
   highlighted?: boolean
   onGetStarted: () => void
 }) {
   return (
     <div
-      className={`flex flex-col rounded-2xl border bg-white p-6 text-slate-800 shadow-sm ${
+      className={`relative flex flex-col rounded-2xl border bg-white p-6 text-slate-800 shadow-sm ${
         highlighted ? 'border-[#52b788] ring-2 ring-[#52b788]' : 'border-slate-100'
       }`}
     >
+      {badge && (
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#52b788] px-3 py-1 text-xs font-bold text-[#0d2b23]">
+          {badge}
+        </span>
+      )}
       <h3 className="text-sm font-bold uppercase tracking-wider text-[#1b4d3e]">{name}</h3>
       <p className="mt-3">
         <span className="text-4xl font-extrabold text-slate-900">{price}</span>
         <span className="text-sm text-slate-500">{period}</span>
       </p>
       {note && <p className="mt-1 text-xs font-semibold text-[#2c6e59]">{note}</p>}
+      {valueAnchor && <p className="mt-2 text-xs leading-relaxed text-slate-600">{valueAnchor}</p>}
       <ul className="mt-5 flex-1 space-y-2">
         {PLAN_FEATURES.map((feature) => (
           <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
@@ -482,7 +551,7 @@ function PriceCard({
       <button
         type="button"
         onClick={onGetStarted}
-        className={`mt-6 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold shadow-md transition ${
+        className={`mt-6 flex min-h-11 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold shadow-md transition ${
           highlighted
             ? 'bg-[#2c6e59] text-white hover:bg-[#1b4d3e]'
             : 'border border-[#2c6e59] text-[#1b4d3e] hover:bg-[#f0fdf4]'
@@ -492,27 +561,6 @@ function PriceCard({
         <ArrowRight className="h-4 w-4" />
       </button>
     </div>
-  )
-}
-
-function HeroAction({
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  icon: typeof ArrowRight
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center justify-center gap-2 rounded-xl border border-[#52b788]/40 bg-[#1b4d3e] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#2c6e59] sm:text-sm"
-    >
-      <Icon className="h-4 w-4 text-emerald-300 transition group-hover:scale-110" />
-      {label}
-    </button>
   )
 }
 
@@ -539,7 +587,7 @@ function PromoVideo() {
         >
           <img
             src={VIMEO_POSTER}
-            alt=""
+            alt="Asine work order demo video preview"
             className="absolute inset-0 h-full w-full object-cover"
           />
           <span className="absolute inset-0 bg-[#0d2b23]/30 transition group-hover:bg-[#0d2b23]/15" />
