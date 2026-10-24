@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   ArrowRight,
   CalendarCheck,
   Check,
   ClipboardList,
   Headphones,
+  Lock,
   Mail,
   MessageCircle,
   Play,
@@ -28,7 +29,28 @@ const VIMEO_TITLE = 'Asine - Manage less. Resolve more.'
 const VIMEO_POSTER =
   'https://i.vimeocdn.com/video/2198754137-38aa9742a3330377483d99b35d6d5907b641698213b527b071c2e124cfc43a2e-d_1280x720?region=us'
 
+const PLAN_FEATURES = [
+  'Unlimited units',
+  'Unlimited tenants and technicians',
+  'Work orders with photo attachments',
+  'Direct tenant and technician chat',
+  'Tenants reopen the same work order',
+  'Cancel anytime',
+]
+
+const PATH_SECTIONS: Record<string, string> = {
+  '/pricing': 'pricing',
+  '/features': 'highlights',
+  '/contact': 'contact',
+}
+
 const highlights = [
+  {
+    title: 'Reopen Work Orders',
+    body: 'Recurring problem? Tenants reopen the same request, with its photos and chat history, instead of starting over.',
+    icon: RefreshCw,
+    terracotta: true,
+  },
   {
     title: 'Work Orders',
     body: 'Tenants submit maintenance requests directly with photo attachments.',
@@ -40,12 +62,6 @@ const highlights = [
     body: 'Tenants and assigned technicians communicate in one direct chat channel.',
     icon: MessageCircle,
     terracotta: false,
-  },
-  {
-    title: 'Reopen Work Orders',
-    body: 'Recurring problem? Tenants can reopen existing requests without starting over.',
-    icon: RefreshCw,
-    terracotta: true,
   },
   {
     title: 'Simple Technician Workflow',
@@ -66,6 +82,11 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
   const [sending, setSending] = useState(false)
   const [contactSent, setContactSent] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const section = PATH_SECTIONS[window.location.pathname.replace(/\/$/, '')]
+    if (section) scrollToId(section)
+  }, [])
 
   const handleWaitlist = async (e: FormEvent) => {
     e.preventDefault()
@@ -121,6 +142,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             <button type="button" onClick={() => scrollToId('action')} className="hover:text-white">
               How It Works
             </button>
+            <button type="button" onClick={() => scrollToId('pricing')} className="hover:text-white">
+              Pricing
+            </button>
             <button type="button" onClick={() => scrollToId('contact')} className="hover:text-white">
               Contact
             </button>
@@ -157,11 +181,12 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             The Modern Property Maintenance Ecosystem
           </div>
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-            Spend Less Time Managing <br className="hidden sm:inline" /> Maintenance Communication
+            When a Repair Comes Back, <br className="hidden sm:inline" /> Pick Up Where You Left Off
           </h1>
           <p className="mx-auto max-w-3xl text-base font-normal leading-relaxed text-emerald-100/90 sm:text-lg">
-            Asine connects tenants and technicians directly around work orders, so property managers
-            can focus on managing their properties instead of middle-manning every ticket.
+            Asine keeps the tenant, photos, and technician chat on one work order. If the problem
+            returns, the tenant reopens that same request instead of starting over, and you stop
+            relaying messages between everyone.
           </p>
           <div className="pt-6">
             <div className="mx-auto max-w-4xl rounded-2xl border border-[#38826b]/40 bg-[#143d32]/90 p-4 shadow-2xl backdrop-blur-md sm:p-5">
@@ -186,6 +211,16 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                   onClick={() => scrollToId('contact')}
                 />
               </div>
+              <p className="mt-4 text-center text-xs text-emerald-200/90 sm:text-sm">
+                Flat $199.99/month · Unlimited units ·{' '}
+                <button
+                  type="button"
+                  onClick={() => scrollToId('contact')}
+                  className="font-semibold text-emerald-100 underline hover:text-white"
+                >
+                  Ask us for a 30-day free trial code
+                </button>
+              </p>
             </div>
           </div>
         </div>
@@ -249,6 +284,45 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         </div>
 
         <section
+          id="pricing"
+          className="scroll-mt-24 rounded-3xl border border-[#2c6e59] bg-[#1b4d3e] p-6 text-white shadow-xl sm:p-10"
+        >
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+              One flat price. No per-unit fees.
+            </h2>
+            <p className="mt-2 text-sm text-emerald-100/80">
+              Every plan includes unlimited units, tenants, and technicians.
+            </p>
+          </div>
+          <div className="mx-auto mt-8 grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
+            <PriceCard name="Monthly" price="$199.99" period="/month" onGetStarted={onGetStarted} />
+            <PriceCard
+              name="Yearly"
+              price="$1,919.99"
+              period="/year"
+              note="Save 20% · $479.89 less than paying monthly"
+              highlighted
+              onGetStarted={onGetStarted}
+            />
+          </div>
+          <p className="mt-8 text-center text-xs text-emerald-100/80 sm:text-sm">
+            Have a trial code from us? Enter it at checkout.{' '}
+            <button
+              type="button"
+              onClick={() => scrollToId('contact')}
+              className="font-semibold text-emerald-100 underline hover:text-white"
+            >
+              Ask for a 30-day free trial code
+            </button>
+          </p>
+          <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-emerald-200/70">
+            <Lock className="h-3.5 w-3.5" />
+            Payments are processed securely by Stripe.
+          </p>
+        </section>
+
+        <section
           id="contact"
           className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
         >
@@ -261,8 +335,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 Contact us
               </h2>
               <p className="text-sm leading-relaxed text-slate-600">
-                Tell us about your property portfolio and we will follow up. Ready to go live right
-                now? Get started and activate a plan instead.
+                Want to try Asine first? Tell us about your portfolio and we will send you a code
+                for a 30-day free trial. Ready to go live right now? Get started and activate a
+                plan instead.
               </p>
               <button
                 type="button"
@@ -360,6 +435,57 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
           </div>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function PriceCard({
+  name,
+  price,
+  period,
+  note,
+  highlighted = false,
+  onGetStarted,
+}: {
+  name: string
+  price: string
+  period: string
+  note?: string
+  highlighted?: boolean
+  onGetStarted: () => void
+}) {
+  return (
+    <div
+      className={`flex flex-col rounded-2xl border bg-white p-6 text-slate-800 shadow-sm ${
+        highlighted ? 'border-[#52b788] ring-2 ring-[#52b788]' : 'border-slate-100'
+      }`}
+    >
+      <h3 className="text-sm font-bold uppercase tracking-wider text-[#1b4d3e]">{name}</h3>
+      <p className="mt-3">
+        <span className="text-4xl font-extrabold text-slate-900">{price}</span>
+        <span className="text-sm text-slate-500">{period}</span>
+      </p>
+      {note && <p className="mt-1 text-xs font-semibold text-[#2c6e59]">{note}</p>}
+      <ul className="mt-5 flex-1 space-y-2">
+        {PLAN_FEATURES.map((feature) => (
+          <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2c6e59]" />
+            {feature}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={onGetStarted}
+        className={`mt-6 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold shadow-md transition ${
+          highlighted
+            ? 'bg-[#2c6e59] text-white hover:bg-[#1b4d3e]'
+            : 'border border-[#2c6e59] text-[#1b4d3e] hover:bg-[#f0fdf4]'
+        }`}
+      >
+        Get Started
+        <ArrowRight className="h-4 w-4" />
+      </button>
     </div>
   )
 }
