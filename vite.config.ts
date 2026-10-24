@@ -11,6 +11,8 @@ const MARKETING_REWRITES: Record<string, string> = {
   '/pricing': '/pricing.html',
   '/about': '/about.html',
   '/features': '/features.html',
+  '/vs/asine-vs-property-meld': '/vs/asine-vs-property-meld.html',
+  '/vs/asine-vs-buildium': '/vs/asine-vs-buildium.html',
 }
 
 function marketingPageRewrite() {
@@ -55,6 +57,8 @@ export default defineConfig({
         pricing: resolve(rootDir, 'pricing.html'),
         about: resolve(rootDir, 'about.html'),
         features: resolve(rootDir, 'features.html'),
+        vsPropertyMeld: resolve(rootDir, 'vs/asine-vs-property-meld.html'),
+        vsBuildium: resolve(rootDir, 'vs/asine-vs-buildium.html'),
       },
     },
   },

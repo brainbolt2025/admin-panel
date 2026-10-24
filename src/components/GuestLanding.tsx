@@ -189,6 +189,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             <a href="/about" className="hover:text-white">
               About
             </a>
+            <a href="/vs/asine-vs-property-meld" className="hover:text-white">
+              Compare
+            </a>
             <button type="button" onClick={() => scrollToId('faq')} className="hover:text-white">
               FAQ
             </button>
@@ -250,6 +253,18 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 About
+              </a>
+              <a
+                href="/vs/asine-vs-property-meld"
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                Asine vs Property Meld
+              </a>
+              <a
+                href="/vs/asine-vs-buildium"
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                Asine vs Buildium
               </a>
               <button
                 type="button"
@@ -620,6 +635,12 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             </a>
             <a href="/features" className="underline hover:text-white">
               Features
+            </a>
+            <a href="/vs/asine-vs-property-meld" className="underline hover:text-white">
+              vs Property Meld
+            </a>
+            <a href="/vs/asine-vs-buildium" className="underline hover:text-white">
+              vs Buildium
             </a>
             <button type="button" onClick={() => scrollToId('faq')} className="underline hover:text-white">
               FAQ
