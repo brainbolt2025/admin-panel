@@ -23,7 +23,14 @@ import Waitlist from './components/Waitlist'
 import ComposeEmail from './components/ComposeEmail'
 import ResetPassword from './components/ResetPassword'
 import SplashScreen from './components/SplashScreen'
+import PmShowcaseTour from './components/PmShowcaseTour'
 import { getAuthenticatedSupabase, supabase, isPasswordRecoveryLanding } from './lib/supabase'
+import {
+  getStoredUserId,
+  hasSeenPmTenantTutorial,
+  markPmTenantTutorialSeen,
+  type PmTourStep,
+} from './lib/pmOnboarding'
 import { PendingWorkOrdersProvider } from './context/PendingWorkOrdersContext'
 import { queryKeys } from './lib/queryKeys'
 import {
@@ -152,6 +159,43 @@ function App() {
   const queryClient = useQueryClient()
   const isPmUser = userProfile?.role === 'pm'
   const propertyId = userProfile?.property_id ?? null
+  const [pmTourStep, setPmTourStep] = useState<PmTourStep | null>(null)
+
+  useEffect(() => {
+    if (!isPmUser || !isLoggedIn) {
+      setPmTourStep(null)
+      return
+    }
+    const userId = userProfile?.id || getStoredUserId()
+    if (!hasSeenPmTenantTutorial(userId)) {
+      setPmTourStep('welcome')
+    }
+  }, [isPmUser, isLoggedIn, userProfile?.id])
+
+  useEffect(() => {
+    if (pmTourStep === 'nav-tenants' && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(true)
+    }
+  }, [pmTourStep])
+
+  const finishPmTour = useCallback(() => {
+    markPmTenantTutorialSeen(userProfile?.id || getStoredUserId())
+    setPmTourStep(null)
+  }, [userProfile?.id])
+
+  const advancePmTour = useCallback(() => {
+    setPmTourStep((current) => {
+      if (current === 'welcome') return 'nav-tenants'
+      if (current === 'nav-tenants') return 'add-tenants'
+      if (current === 'add-tenants') return 'invite-bulk'
+      if (current === 'invite-bulk') return 'invite-single'
+      if (current === 'invite-single') {
+        markPmTenantTutorialSeen(userProfile?.id || getStoredUserId())
+        return null
+      }
+      return null
+    })
+  }, [userProfile?.id])
 
   const { data: pendingWorkOrderIdsData } = useQuery({
     queryKey: queryKeys.pendingWorkOrders(propertyId),
@@ -1093,6 +1137,7 @@ const pendingWorkOrdersContextValue = useMemo(
           activeItem={activeItem}
           onActiveItemChange={setActiveItem}
           isPM={isPmUser}
+          tourHighlightTenants={pmTourStep === 'nav-tenants'}
         />
         
         <div className="flex-1 flex flex-col lg:ml-64">
@@ -1121,6 +1166,13 @@ const pendingWorkOrdersContextValue = useMemo(
             {renderContent()}
           </main>
         </div>
+        {isPmUser && pmTourStep && (
+          <PmShowcaseTour
+            step={pmTourStep}
+            onSkip={finishPmTour}
+            onNext={advancePmTour}
+          />
+        )}
       </div>
     </PendingWorkOrdersProvider>
   )

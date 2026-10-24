@@ -10,9 +10,18 @@ export interface SidebarProps {
   onActiveItemChange: (item: string) => void;
   /** Prefer profile role from App; falls back to localStorage if omitted */
   isPM?: boolean;
+  /** Elevate Tenants nav above showcase overlay */
+  tourHighlightTenants?: boolean;
 }
 
-const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemChange, isPM: isPMProp }) => {
+const Sidebar: FC<SidebarProps> = ({
+  isOpen,
+  onToggle,
+  activeItem,
+  onActiveItemChange,
+  isPM: isPMProp,
+  tourHighlightTenants = false,
+}) => {
   // Fallback for callers that don't pass isPM yet
   const getUserRole = () => {
     try {
@@ -107,11 +116,13 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                 return (
                   <li key={item.id}>
                     <div
+                      data-tour={item.id === 'Tenants' ? 'pm-nav-tenants' : undefined}
                       onClick={() => {
                         onActiveItemChange(item.id);
                         if (item.id === 'Work Orders') acknowledgeWorkOrders();
                         if (item.id === 'Tenants') acknowledgeTenants();
                         if (item.id === 'Reports') acknowledgeReports();
+                        if (item.id === 'Tenants' && isOpen) onToggle();
                       }}
                       className={`
                         w-full flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors
@@ -119,6 +130,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle, activeItem, onActiveItemC
                           ? 'bg-teal-50 text-teal-700 font-medium'
                           : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50 font-normal'
                         }
+                        ${item.id === 'Tenants' && tourHighlightTenants ? 'bg-white shadow-md ring-2 ring-teal-400' : ''}
                       `}
                     >
                       <span className="flex items-center gap-3">
