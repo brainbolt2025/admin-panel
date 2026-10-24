@@ -21,6 +21,7 @@ import {
   type ApprovalStatus,
 } from '../lib/approvalStatus';
 import { toUserFacingError } from '../lib/userFacingError';
+import { consumeOpenInviteTenants } from '../lib/pmOnboarding';
 
 const PROFILE_PICTURES_BUCKET = 'profile-pictures';
 
@@ -121,7 +122,9 @@ const Users = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State for invite new tenants form
-  const [showInviteNewTenants, setShowInviteNewTenants] = useState(false);
+  const [showInviteNewTenants, setShowInviteNewTenants] = useState(() =>
+    isPM ? consumeOpenInviteTenants() : false,
+  );
   const [showDownloadQr, setShowDownloadQr] = useState(false);
   const [inviteQr, setInviteQr] = useState<{
     email: string;
@@ -592,8 +595,9 @@ const Users = ({
             <div className="flex justify-center mb-6">
               <button
                 type="button"
+                data-tour="pm-add-tenants"
                 onClick={() => setShowInviteNewTenants(true)}
-                className="flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white text-lg font-semibold py-3.5 px-10 rounded-xl shadow-sm transition-colors"
+                className="relative z-[90] flex items-center gap-3 bg-teal-600 hover:bg-teal-700 text-white text-lg font-semibold py-3.5 px-10 rounded-xl shadow-sm transition-colors"
               >
                 <UserPlus className="w-6 h-6" />
                 Add tenants

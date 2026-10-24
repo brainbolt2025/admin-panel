@@ -343,7 +343,10 @@ const InviteNewTenants = ({
           </p>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <section className="border border-gray-200 rounded-xl p-5">
+            <section
+              data-tour="pm-invite-bulk"
+              className="relative z-[90] border border-gray-200 rounded-xl bg-white p-5"
+            >
               <h2 className="text-sm font-semibold text-gray-900 mb-4">Option 1: Bulk add via CSV</h2>
 
               {csvNotice && (
@@ -469,7 +472,10 @@ const InviteNewTenants = ({
               </div>
             </section>
 
-            <section className="border border-gray-200 rounded-xl p-5">
+            <section
+              data-tour="pm-invite-single"
+              className="relative z-[90] border border-gray-200 rounded-xl bg-white p-5"
+            >
               <h2 className="text-sm font-semibold text-gray-900 mb-1">Option 2: Add one tenant</h2>
               <p className="text-sm text-gray-500 mb-4">Enter details to add a tenant</p>
 
