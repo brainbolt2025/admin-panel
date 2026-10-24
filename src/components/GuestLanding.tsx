@@ -403,10 +403,15 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             <p className="mt-2 text-sm text-emerald-100/80">
               Every plan includes unlimited units, tenants, and technicians.
             </p>
+            <p className="mt-3 text-sm leading-relaxed text-emerald-100/90">
+              Built for portfolios from 20 units up. If you self-manage a handful of units, Asine
+              may be more than you need — reach out and we will say so.
+            </p>
           </div>
           <div className="mx-auto mt-8 grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
             <PriceCard
               name="Monthly"
+              audience="For firms that want flexibility"
               price="$199.99"
               period="/month"
               valueAnchor="At $2.00/unit, 100 units would cost $200/month elsewhere. Here it is $199.99 total, however much you grow."
@@ -414,6 +419,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             />
             <PriceCard
               name="Yearly"
+              audience="Best value for growing portfolios"
               price="$1,919.99"
               period="/year"
               note="Save 20% · $479.89 less than paying monthly"
@@ -638,6 +644,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
 
 function PriceCard({
   name,
+  audience,
   price,
   period,
   note,
@@ -647,6 +654,7 @@ function PriceCard({
   onGetStarted,
 }: {
   name: string
+  audience?: string
   price: string
   period: string
   note?: string
@@ -667,6 +675,7 @@ function PriceCard({
         </span>
       )}
       <h3 className="text-sm font-bold uppercase tracking-wider text-[#1b4d3e]">{name}</h3>
+      {audience && <p className="mt-1 text-sm font-medium text-slate-700">{audience}</p>}
       <p className="mt-3">
         <span className="text-4xl font-extrabold text-slate-900">{price}</span>
         <span className="text-sm text-slate-500">{period}</span>
