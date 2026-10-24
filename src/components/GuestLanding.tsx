@@ -49,6 +49,7 @@ const FOUNDER = {
   name: 'Juan Romero',
   role: 'Founder, Asine',
   linkedIn: 'https://www.linkedin.com/in/juan-r-53b470145',
+  photo: '/juan-romero.jpg',
   bio: 'I built Asine because property managers should not be the middleman on every repair. When a maintenance issue comes back, the tenant, photos, and technician should pick up on the same work order.',
 }
 
@@ -407,12 +408,11 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
           className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
         >
           <div className="mx-auto flex max-w-3xl flex-col items-start gap-6 sm:flex-row sm:items-center">
-            <div
-              className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#1b4d3e] text-2xl font-bold text-white"
-              aria-hidden
-            >
-              JR
-            </div>
+            <img
+              src={FOUNDER.photo}
+              alt={FOUNDER.name}
+              className="h-28 w-28 shrink-0 rounded-full object-cover object-[center_18%] ring-2 ring-[#d8f3dc]"
+            />
             <div className="space-y-3">
               <div>
                 <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
