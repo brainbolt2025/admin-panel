@@ -178,7 +178,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         <div className="relative z-10 mx-auto max-w-5xl space-y-6 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#52b788]/30 bg-[#1b4d3e]/80 px-3.5 py-1.5 text-xs font-medium tracking-wide text-emerald-200">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            The Modern Property Maintenance Ecosystem
+            Property maintenance, in one work order
           </div>
           <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
             When a Repair Comes Back, <br className="hidden sm:inline" /> Pick Up Where You Left Off
@@ -386,7 +386,7 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                       required
                       value={propertyName}
                       onChange={(e) => setPropertyName(e.target.value)}
-                      placeholder="Sunset Apartments / Apex Management"
+                      placeholder="Apex Property Management"
                       className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-[#2c6e59]"
                     />
                   </label>
