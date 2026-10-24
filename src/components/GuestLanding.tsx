@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import AsineLogo from './AsineLogo'
+import WorkOrderProductPreview from './WorkOrderProductPreview'
 import logoFinal from '../assets/Logo-Final.png'
 import { config } from '../config'
 
@@ -348,61 +349,58 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
       </section>
 
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-12 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 items-stretch gap-8 lg:grid-cols-2">
-          <section
-            id="highlights"
-            className="scroll-mt-24 flex flex-col justify-between rounded-3xl border border-[#2c6e59] bg-[#1b4d3e] p-6 text-white shadow-xl sm:p-8"
-          >
-            <div>
-              <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Asine Platform Highlights</h2>
-              <p className="mb-6 mt-2 text-xs text-emerald-100/80 sm:text-sm">
-                Designed specifically to eliminate middleman overhead for property managers.
-              </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {highlights.map(({ title, body, icon: Icon, terracotta }) => (
-                  <button
-                    key={title}
-                    type="button"
-                    onClick={() => scrollToId('action')}
-                    className={`group rounded-2xl border bg-white p-4 text-left text-slate-800 shadow-sm transition hover:shadow-md ${
-                      terracotta
-                        ? 'border-slate-100 hover:border-[#c25e38]'
-                        : 'border-slate-100 hover:border-[#52b788]'
+        <section
+          id="highlights"
+          className="scroll-mt-24 rounded-3xl border border-[#2c6e59] bg-[#1b4d3e] p-6 text-white shadow-xl sm:p-8"
+        >
+          <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Asine Platform Highlights</h2>
+          <p className="mt-2 text-xs text-emerald-100/80 sm:text-sm">
+            Designed specifically to eliminate middleman overhead for property managers.
+          </p>
+          <div className="mt-6 grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {highlights.map(({ title, body, icon: Icon, terracotta }) => (
+                <button
+                  key={title}
+                  type="button"
+                  onClick={() => scrollToId('action')}
+                  className={`group rounded-2xl border bg-white p-4 text-left text-slate-800 shadow-sm transition hover:shadow-md ${
+                    terracotta
+                      ? 'border-slate-100 hover:border-[#c25e38]'
+                      : 'border-slate-100 hover:border-[#52b788]'
+                  }`}
+                >
+                  <div
+                    className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl transition group-hover:scale-110 ${
+                      terracotta ? 'bg-orange-50 text-[#c25e38]' : 'bg-emerald-50 text-[#1b4d3e]'
                     }`}
                   >
-                    <div
-                      className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl transition group-hover:scale-110 ${
-                        terracotta ? 'bg-orange-50 text-[#c25e38]' : 'bg-emerald-50 text-[#1b4d3e]'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <h3 className="mb-1 text-sm font-bold text-slate-900">{title}</h3>
-                    <p className="text-xs leading-relaxed text-slate-600">{body}</p>
-                  </button>
-                ))}
-              </div>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-1 text-sm font-bold text-slate-900">{title}</h3>
+                  <p className="text-xs leading-relaxed text-slate-600">{body}</p>
+                </button>
+              ))}
             </div>
-          </section>
+            <WorkOrderProductPreview />
+          </div>
+        </section>
 
-          <section
-            id="action"
-            className="scroll-mt-24 flex flex-col justify-between rounded-3xl border border-[#2c6e59] bg-[#143d32] p-6 text-white shadow-xl sm:p-8"
-          >
-            <div>
-              <div className="mb-4">
-                <h2 className="text-xl font-bold tracking-tight sm:text-2xl">See Asine in Action</h2>
-                <p className="mt-1 text-xs text-emerald-200/80 sm:text-sm">
-                  Watch how tenants, technicians, and property managers work together.
-                </p>
-              </div>
-              <PromoVideo />
-            </div>
-            <p className="mt-4 text-center text-xs font-medium text-emerald-200">
-              {VIMEO_TITLE}
+        <section
+          id="action"
+          className="scroll-mt-24 rounded-3xl border border-[#2c6e59] bg-[#143d32] p-6 text-white shadow-xl sm:p-8"
+        >
+          <div className="mb-4">
+            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">See Asine in Action</h2>
+            <p className="mt-1 text-xs text-emerald-200/80 sm:text-sm">
+              Watch how tenants, technicians, and property managers work together.
             </p>
-          </section>
-        </div>
+          </div>
+          <div className="mx-auto max-w-4xl">
+            <PromoVideo />
+            <p className="mt-4 text-center text-xs font-medium text-emerald-200">{VIMEO_TITLE}</p>
+          </div>
+        </section>
 
         <section
           id="pricing"
