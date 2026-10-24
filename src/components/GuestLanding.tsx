@@ -425,9 +425,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
       <footer className="border-t border-[#143d32] bg-[#0d2b23] px-4 py-8 text-center text-xs text-emerald-100/70">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
           <p>
-            <span className="font-bold text-white">Asine LLC</span>
+            <span className="font-bold text-white">Syc&amp;More LLC</span>
             <span className="ml-2">
-              Florida · © {new Date().getFullYear()} Asine LLC. All rights reserved.
+              Florida · © {new Date().getFullYear()} Syc&amp;More LLC. All rights reserved.
             </span>
           </p>
           <div className="flex items-center gap-6">
