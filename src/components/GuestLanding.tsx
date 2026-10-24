@@ -3,6 +3,7 @@ import {
   ArrowRight,
   CalendarCheck,
   Check,
+  ChevronDown,
   ClipboardList,
   Linkedin,
   Lock,
@@ -43,6 +44,7 @@ const PATH_SECTIONS: Record<string, string> = {
   '/features': 'highlights',
   '/contact': 'contact',
   '/about': 'about',
+  '/faq': 'faq',
 }
 
 const FOUNDER = {
@@ -52,6 +54,30 @@ const FOUNDER = {
   photo: '/juan-romero.jpg',
   bio: 'I built Asine because property managers should not be the middleman on every repair. When a maintenance issue comes back, the tenant, photos, and technician should pick up on the same work order.',
 }
+
+/** Keep answers in sync with FAQPage JSON-LD in index.html */
+const FAQ_ITEMS = [
+  {
+    question: 'Does Asine integrate with AppFolio, Buildium, or Yardi?',
+    answer:
+      'Not today. Asine does not sync with those property management systems. It runs alongside your existing PMS so you can handle work orders, photos, and tenant–technician chat in one place without replacing your accounting or leasing tools.',
+  },
+  {
+    question: 'Do tenants and technicians need a mobile app?',
+    answer:
+      'Tenants and technicians use the Asine Android app to submit requests, share photos, chat, and update jobs. Property managers run the portfolio from the Asine admin website on any browser.',
+  },
+  {
+    question: 'How is my property and maintenance data handled?',
+    answer:
+      'Work orders, photos, and chat are visible only to the people on that request—typically the tenant, assigned technician, and your property staff. Account and app data are hosted with our provider (Supabase). We do not sell personal information. Full details are in our privacy policy.',
+  },
+  {
+    question: 'How does the 30-day free trial work?',
+    answer:
+      'Contact us with your portfolio details and we send a unique trial code. Enter it at checkout so the first invoice is $0 for 30 days. Cancel before the trial ends and you are never charged. Each code works once.',
+  },
+]
 
 const highlights = [
   {
@@ -163,6 +189,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
             <button type="button" onClick={() => scrollToId('about')} className="hover:text-white">
               About
             </button>
+            <button type="button" onClick={() => scrollToId('faq')} className="hover:text-white">
+              FAQ
+            </button>
             <button type="button" onClick={() => scrollToId('contact')} className="hover:text-white">
               Contact
             </button>
@@ -224,6 +253,13 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
                 className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
               >
                 About
+              </button>
+              <button
+                type="button"
+                onClick={() => goToSection('faq')}
+                className="min-h-11 rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-100 hover:bg-[#1b4d3e] hover:text-white"
+              >
+                FAQ
               </button>
               <button
                 type="button"
@@ -435,6 +471,38 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
         </section>
 
         <section
+          id="faq"
+          className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
+        >
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              Frequently asked questions
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Straight answers to what property managers usually ask before trying Asine.
+            </p>
+            <div className="mt-8 divide-y divide-slate-200 border-t border-b border-slate-200">
+              {FAQ_ITEMS.map((item) => (
+                <details key={item.question} className="group py-1">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-semibold text-slate-900 marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span>{item.question}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-[#2c6e59] transition group-open:rotate-180" />
+                  </summary>
+                  <p className="pb-4 pr-8 text-sm leading-relaxed text-slate-600">{item.answer}</p>
+                </details>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-slate-500">
+              See also our{' '}
+              <a href="/privacy" className="font-semibold text-[#1b4d3e] underline-offset-2 hover:underline">
+                privacy policy
+              </a>
+              .
+            </p>
+          </div>
+        </section>
+
+        <section
           id="contact"
           className="scroll-mt-24 rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-10"
         >
@@ -543,6 +611,9 @@ const GuestLanding = ({ onGetStarted, onSignIn }: GuestLandingProps) => {
           <div className="flex flex-wrap items-center justify-center gap-6">
             <button type="button" onClick={() => scrollToId('about')} className="underline hover:text-white">
               About
+            </button>
+            <button type="button" onClick={() => scrollToId('faq')} className="underline hover:text-white">
+              FAQ
             </button>
             <a href="/privacy" className="underline hover:text-white">
               Privacy policy
